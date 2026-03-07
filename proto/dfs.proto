@@ -1,0 +1,211 @@
+syntax = "proto3";
+option go_package = "github.com/erwannd/dfs/messages;messages";
+
+// Storage -> Controller
+// Send when a Storage node just started
+message RegisterRequest {
+    string hostname = 1;    // hostname or IP
+    int32 port = 2;         // listening port
+    uint64 free_space = 3;  // available disk space (bytes)
+}
+
+// Controller -> Storage
+message RegisterResponse {
+    bool ok = 1;
+    uint32 node_id = 2;     // unique ID for this node
+    string error = 3;       // empty if ok=True otherwise error message
+}
+
+// Storage -> Controller
+// Send every 5 seconds
+// Piggyback replication response if Controller made a replication request
+message Heartbeat {
+    uint32 node_id = 1;
+    uint64 free_space = 2;      // free disk space (bytes)
+    uint64 num_request = 3;     // number of request handled
+    repeated ChunkInfo new_chunks = 4; // ack that a replication request is successful
+}
+
+// Controller -> Storage
+// Piggback replication request, if a node failed
+message HeartbeatResponse {
+    bool ack = 1;
+    repeated ReplicateRequest replicate_request = 2;  // maybe carry replication request here?
+}
+
+// Controller -> Storage
+message ReplicateRequest {
+    string src_host = 1;        // host to replicate chunk from
+    int32 src_port = 2;         // port the host is listening on
+    ChunkInfo chunk_info = 3;
+}
+
+// --- CLIENT ---
+
+// Represents a chunk of a file
+message ChunkInfo {
+    string filename = 1;    
+    uint32 chunk_index = 2; // chunk number
+}
+
+// Represents a storage node's address
+message NodeInfo {
+    uint32 node_id = 1;
+    string hostname = 2;
+    int32 port = 3;
+}
+
+// Represents where to send a specific chunk
+message ChunkMapping {
+    ChunkInfo chunk_info = 1;       // which chunk
+    repeated NodeInfo nodes = 2;    // locations of primary & replicas (e.g. [A, B, C])
+}
+
+// Client -> Controller
+message StoreRequest {
+    string filename = 1;
+    uint32 chunk_count = 2;
+    uint64 chunk_size = 3;  // to be consistent with freespace in Heartbeat, also uint64
+    uint64 file_size = 4;   // total file size
+}
+
+// Controller -> Client
+message StoreResponse {
+    bool ok = 1;
+    string error = 2;   // empty if ok=true
+    repeated ChunkMapping destinations = 3;
+}
+
+// Client -> Controller
+message RetrieveRequest {
+    string filename = 1;
+}
+
+// Controller -> Client
+message RetrieveResponse {
+    bool ok = 1;
+    string error = 2; // empty if ok=true
+    repeated ChunkMapping locations = 3;
+}
+
+// Client -> Controller
+message DeleteRequest {
+    string filename = 1;
+}
+
+// Controller -> Client
+message DeleteResponse {
+    bool ok = 1;        // success or fail
+    string error = 2;   // empty if ok=true
+}
+
+// Client -> Controller
+// List all stored files
+message ListRequest {}
+
+// Represents a file in the system
+message FileInfo {
+    string filename = 1;
+    uint64 file_size = 2;
+    uint32 chunk_count = 3; // how many chunks does this file have
+}
+
+// Controller -> Client
+message ListResponse {
+    bool ok = 1;
+    string error = 2;
+    repeated FileInfo files = 3;    // empty if no files stored
+}
+
+// Client -> Controller
+// Request for node list + disk space + request counts
+message ClusterInfoRequest {}
+
+// Represents a storage node's runtime stats
+message NodeStats {
+    NodeInfo node_info = 1;     // id, hostname, port
+    uint64 free_space = 2;      // free space
+    uint64 num_requests = 3;    // request count
+}
+
+// Controller -> Client
+message ClusterInfoResponse {
+    repeated NodeStats node_stats = 1;
+    uint64 total_free_space = 2;    // total across all nodes
+    uint64 total_requests = 3;      // total request count
+}
+
+// Client -> Storage AND Storage -> Storage
+message StoreChunkRequest {
+    ChunkInfo chunk_info = 1;       // filename + chunk index
+    bytes chunk_data = 2;
+    bytes checksum = 3;
+    repeated NodeInfo pipeline = 4; // next remaining nodes in the pipeline
+}
+
+// Storage -> Client
+message StoreChunkResponse {
+    bool ok = 1;        // success or fail
+    string error = 2;   // empty if ok=true
+    ChunkInfo chunk_info = 3;   // which chunk was successfully saved (useful for error reporting)
+}
+
+// Client -> Storage
+message RetrieveChunkRequest {
+    ChunkInfo chunk_info = 1;
+}
+
+// Storage -> Client
+message RetrieveChunkResponse {
+    bool ok = 1;
+    string error = 2;       // empty if ok=true
+    bytes chunk_data = 3;
+    bytes checksum = 4;     // client should verify checksum, if corrupted ask from one of the replicas
+}
+
+// Controller -> Storage
+// Controller issues deletion instead of client
+message DeleteChunkRequest {
+    ChunkInfo chunk_info = 1;
+}
+
+message DeleteChunkResponse {
+    bool ok = 1;
+    string error = 2;
+    ChunkInfo chunk_info = 3;   // so Controller knows which chunk this ack is for
+}
+
+// --- EXTRAS ---
+
+message Wrapper {
+    oneof msg {
+        // Controller <-> Storage
+        RegisterRequest register_request = 1;
+        RegisterResponse register_response = 2;
+        Heartbeat heartbeat = 3;
+        HeartbeatResponse heartbeat_response = 4;
+        ReplicateRequest replicate_request = 5;
+
+        // Client <-> Controller
+        StoreRequest store_request = 6;
+        StoreResponse store_response = 7;
+        RetrieveRequest retrieve_request = 8;
+        RetrieveResponse retrieve_response = 9;
+        DeleteRequest delete_request = 10;
+        DeleteResponse delete_response = 11;
+        ListRequest list_request = 12;
+        ListResponse list_response = 13;
+        ClusterInfoRequest cluster_info_request = 14;
+        ClusterInfoResponse cluster_info_response = 15;
+
+        // Client <-> Storage
+        StoreChunkRequest store_chunk_request = 16;
+        StoreChunkResponse store_chunk_response = 17;
+        RetrieveChunkRequest retrieve_chunk_request = 18;
+        RetrieveChunkResponse retrieve_chunk_response = 19;
+
+        // Controller <-> Storage
+        DeleteChunkRequest delete_chunk_request = 20;
+        DeleteChunkResponse delete_chunk_response = 21;
+    }
+}
