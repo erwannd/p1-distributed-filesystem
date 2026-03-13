@@ -21,12 +21,12 @@ func main() {
 	go controller.startFailureDetector()
 
 	// Listen for connection request
-	addr := fmt.Sprint(":%s", *port)
-	listener, err := net.Listen("tcp", addr)
+	address := fmt.Sprintf(":%s", *port)
+	listener, err := net.Listen("tcp", address)
 	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
+		log.Fatalf("[Controller] Failed to listen on %s: %v", address, err)
 	}
-	log.Println("[Controller] Listening on :8000")
+	log.Println("[Controller] Listening on ", address)
 
 	for {
 		conn, err := listener.Accept()
