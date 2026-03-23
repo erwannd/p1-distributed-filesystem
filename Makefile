@@ -1,13 +1,30 @@
-all: bin/controller bin/storage
+UTILS = $(wildcard utils/*.go)
 
-messages/dfs.pb.go: proto/dfs.proto
-	./proto/build.sh
+all: bin/controller bin/storage bin/client
 
-bin/controller: messages/dfs.pb.go controller/controller.go controller/main.go
+bin/:
+	mkdir -p bin/
+
+bin/controller: $(wildcard controller/*.go) $(UTILS)
 	go build -o bin/controller ./controller/
 
-bin/storage: messages/dfs.pb.go storage/storage.go storage/main.go
+bin/storage: $(wildcard storage/*.go) $(UTILS)
 	go build -o bin/storage ./storage/
 
+bin/client: $(wildcard client/*.go) $(UTILS)
+	go build -o bin/client ./client/
+
+start: all
+	./scripts/start.sh
+
+stop:
+	./scripts/stop.sh
+
+logs:
+	./scripts/logs.sh
+
+
+# Note: messages/dfs.pb.go is intentionally not cleaned
+# It is committed to git and generated separately via proto/build.sh
 clean:
-	rm -rf bin/controller bin/storage messages/dfs.pb.go
+	rm -rf bin/ logs/ pids/

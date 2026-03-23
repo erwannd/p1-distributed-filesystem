@@ -6,6 +6,8 @@ import (
 	"log"
 	"net"
 	"time"
+
+	"github.com/erwannd/dfs/utils"
 )
 
 // Storage Node main():
@@ -37,7 +39,7 @@ func main() {
 		log.Fatalf("Usage: storage --controller <host:port> --storage-dir <path> --port <port>")
 	}
 
-	controllerHost, controllerPort, err := parseAddr(*controllerAddr)
+	controllerHost, controllerPort, err := utils.ParseAddr(*controllerAddr)
 	if err != nil {
 		log.Fatalf("Invalid controller address %s: %v", *controllerAddr, err)
 	}
@@ -49,7 +51,16 @@ func main() {
 		port:           int32(*port),
 	}
 
-	// Reconnect loop
+	// Start chunk listener BEFORE registering
+	// so the node is ready to receive chunks by the time
+	// the Controller tells clients about it
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+	if err != nil {
+		log.Fatalf("[StorageNode] Failed to listen on port %d: %v", *port, err)
+	}
+	go node.listenForChunks(listener)
+
+	// Reconnect loop to Controller
 	for {
 		handler, err := node.register()
 		if err != nil {
@@ -65,21 +76,4 @@ func main() {
 		handler.Close()
 		time.Sleep(5 * time.Second)
 	}
-}
-
-/**
- * Split "host:port" into separate host and port
- */
-func parseAddr(addr string) (string, int32, error) {
-	host, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return "", 0, err
-	}
-
-	var port int
-	_, err = fmt.Sscanf(portStr, "%d", &port)
-	if err != nil {
-		return "", 0, fmt.Errorf("invalid port: %s", portStr)
-	}
-	return host, int32(port), nil
 }
