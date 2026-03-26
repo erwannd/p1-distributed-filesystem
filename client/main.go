@@ -4,6 +4,8 @@ import (
 	"flag"
 	"log"
 	"os"
+
+	"github.com/erwannd/dfs/utils"
 )
 
 // ./bin/client --controller localhost:8000 store --file foo.txt --chunk-size 64
@@ -15,16 +17,20 @@ import (
  * Parse args, create Client struct, dispatch to client handler
  */
 func main() {
-	controllerAddr := flag.String("controller", "", "Controller address (host:port)")
+	configPath := flag.String("config", "config.json", "Path to config file")
 	flag.Parse()
 
-	if *controllerAddr == "" {
-		log.Fatalf("Usage: client --controller <host:port> <command> [options]")
+	config, err := utils.LoadConfig(*configPath)
+	if err != nil {
+		log.Fatalf("[Client] Failed to load config: %v", err)
 	}
 
 	// Create Client
 	client := &Client{
-		controllerAddr: *controllerAddr,
+		controllerAddr: config.Controller.Addr(),
+		outputDir:      config.Client.OutputDir,
+		chunkSize:      config.Client.ChunkSizeBytes(),
+		maxConcurrent:  config.Client.MaxConcurrent,
 	}
 
 	// Subcommand (store, retrieve, list)
@@ -46,16 +52,16 @@ func main() {
 	case "nodes":
 		client.nodes()
 	default:
-		log.Fatalf("Unknown command: %s", args[0])
+		log.Fatalf("[Client] Unknown command: %s", args[0])
 	}
 }
 
 func printUsage() {
-	log.Println("Usage: client --controller <host:port> <command> [options]")
+	log.Println("Usage: client --config <config-file> <command> [options]")
 	log.Println("Commands:")
-	log.Println("  store    --file <path> [--chunk-size <bytes>]")
+	log.Println("  store --file <path> [--chunk-size <bytes>]")
 	log.Println("  retrieve --file <name> --output <path>")
-	log.Println("  delete   --file <name>")
+	log.Println("  delete --file <name>")
 	log.Println("  list")
 	log.Println("  nodes")
 }

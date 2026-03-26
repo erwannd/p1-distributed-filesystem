@@ -72,7 +72,7 @@ func (c *Controller) saveSnapshot() error {
 
 	// Write to temp file first, then rename — atomic write
 	// prevents corrupted snapshot if Controller crashes mid-write
-	tmpPath := utils.ControllerSnapshotPath + ".tmp"
+	tmpPath := c.snapshotPath + ".tmp"
 	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal snapshot: %w", err)

@@ -16,6 +16,9 @@ import (
 
 type Client struct {
 	controllerAddr string // controller address (host:port)
+	outputDir      string // where to save retrieved file
+	chunkSize      uint64 // chunk size (bytes)
+	maxConcurrent  int
 }
 
 /**
@@ -31,19 +34,21 @@ func (client *Client) connectToController() (*messages.MessageHandler, error) {
 }
 
 /**
- * Parses flags for store command
+ * Parses flags for store command.
+ * Chunk size can be provided in config or via CLI, in either case must be in MB.
+ * Chunk size provided via CLI flag overrides value set in config.
  */
 func (client *Client) handleStore(args []string) {
 	fs := flag.NewFlagSet("store", flag.ExitOnError)
 	file := fs.String("file", "", "Path to the file to store")
-	chunkSize := fs.Uint64("chunk-size", utils.DefaultChunkSize, "Chunk size in KB")
+	chunkSize := fs.Uint64("chunk-size", client.chunkSize, "Chunk size in bytes")
 	fs.Parse(args)
 
 	if *file == "" {
 		log.Fatalf("store requires --file")
 	}
 
-	fmt.Printf("Store: controller=%s file=%s chunkSize=%d\n", client.controllerAddr, *file, *chunkSize)
+	fmt.Printf("Store: controller=%s file=%s chunkSize=%d\n bytes", client.controllerAddr, *file, *chunkSize)
 
 	if err := client.store(*file, *chunkSize); err != nil {
 		log.Fatalf("[Client] Store failed: %v", err)
@@ -52,15 +57,22 @@ func (client *Client) handleStore(args []string) {
 
 /**
  * Parses flags for retrieve command.
+ * Output dir can be provided via CLI or config file.
+ * Value set via CLI takes priority over config.
  */
 func (client *Client) handleRetrieve(args []string) {
 	fs := flag.NewFlagSet("retrieve", flag.ExitOnError)
 	filename := fs.String("file", "", "File to retrieve")
-	output := fs.String("output", "./downloads", "Output directory")
+	output := fs.String("output", client.outputDir, "Output directory")
 	fs.Parse(args)
 
 	if *filename == "" {
 		log.Fatalf("retrieve requires --file")
+	}
+
+	// Ensure output directory exists before retrieve
+	if err := os.MkdirAll(client.outputDir, 0755); err != nil {
+		log.Fatalf("[Client] Failed to create output directory: %v", err)
 	}
 
 	fmt.Printf("Retrieve: controller=%s file=%s output=%s\n", client.controllerAddr, *filename, *output)
@@ -150,7 +162,7 @@ func (client *Client) store(filename string, chunkSize uint64) error {
 
 	/* Send chunks in parallel */
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, utils.MaxConcurrent) // limit how many goroutine be running at a time
+	sem := make(chan struct{}, client.maxConcurrent) // limit how many goroutine be running at a time
 	errors := make([]error, chunkCount)
 
 	for i, dest := range resp.Destinations {
@@ -232,7 +244,7 @@ func (client *Client) retrieve(filename string, outputDir string) error {
 	errors := make([]error, chunkCount)
 
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, utils.MaxConcurrent)
+	sem := make(chan struct{}, client.maxConcurrent)
 
 	for i, location := range resp.Locations {
 		sem <- struct{}{}

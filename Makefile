@@ -14,14 +14,22 @@ bin/storage: $(wildcard storage/*.go) $(UTILS)
 bin/client: $(wildcard client/*.go) $(UTILS)
 	go build -o bin/client ./client/
 
+# Local execution
 start: all
-	./scripts/start.sh
+	./scripts/start_local.sh
 
 stop:
-	./scripts/stop.sh
+	./scripts/stop_local.sh
 
 logs:
-	./scripts/logs.sh
+	./scripts/logs_local.sh
+
+# Orion execution
+start-orion: all
+	./scripts/start_orion.sh
+
+stop-orion:
+	./scripts/stop_orion.sh
 
 
 # Note: messages/dfs.pb.go is intentionally not cleaned

@@ -10,9 +10,7 @@ import (
 )
 
 const (
-	DefaultChunkSize       = 16 << 20 // 16MB
-	MaxConcurrent          = 2        // max concurrent goroutines for sending chunks
-	ReplicationFactor      = 3        // number of replicas per chunk
+	ReplicationFactor      = 3 // number of replicas per chunk
 	HeartbeatInterval      = 5 * time.Second
 	HeartbeatTimeout       = 15 * time.Second
 	SnapshotInterval       = 30 * time.Second

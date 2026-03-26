@@ -27,12 +27,13 @@ type Controller struct {
 	mu                  sync.RWMutex                            // for concurrent access
 	nextId              uint32                                  // incremental ID
 	pendingReplications map[uint32][]*messages.ReplicateRequest // maps dest NodeID -> replication request
+	snapshotPath        string                                  // where to save .snapshot file
 }
 
 type FileMetadata struct {
 	Filename   string
 	FileSize   uint64
-	ChunkSize  uint64
+	ChunkSize  uint64 // chunk size in bytes
 	ChunkCount uint32
 	Chunks     map[uint32]*ChunkMetadata // maps chunk idx -> metadata
 }
