@@ -78,7 +78,6 @@ func (c *Controller) saveSnapshot() error {
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write snapshot: %w", err)
 	}
-	log.Printf("[Controller] snapshotPath: %s", c.snapshotPath)
 	if err := os.Rename(tmpPath, c.snapshotPath); err != nil {
 		return fmt.Errorf("failed to finalize snapshot: %w", err)
 	}
