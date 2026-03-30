@@ -31,8 +31,11 @@ start-orion: all
 stop-orion:
 	./scripts/stop_orion.sh
 
+logs-orion:
+	./scripts/logs_orion.sh
 
-# Note: messages/dfs.pb.go is intentionally not cleaned
+
+# messages/dfs.pb.go is not cleaned
 # It is committed to git and generated separately via proto/build.sh
 clean:
 	rm -rf bin/ logs/ pids/
