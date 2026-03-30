@@ -6,8 +6,6 @@ import (
 	"log"
 	"os"
 	"time"
-
-	"github.com/erwannd/dfs/utils"
 )
 
 type SnapshotNodeInfo struct {
@@ -80,7 +78,8 @@ func (c *Controller) saveSnapshot() error {
 	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write snapshot: %w", err)
 	}
-	if err := os.Rename(tmpPath, utils.ControllerSnapshotPath); err != nil {
+	log.Printf("[Controller] snapshotPath: %s", c.snapshotPath)
+	if err := os.Rename(tmpPath, c.snapshotPath); err != nil {
 		return fmt.Errorf("failed to finalize snapshot: %w", err)
 	}
 
@@ -92,7 +91,7 @@ func (c *Controller) saveSnapshot() error {
  * Deserialize snapshot from disk on startup.
  */
 func (c *Controller) loadSnapshot() error {
-	data, err := os.ReadFile(utils.ControllerSnapshotPath)
+	data, err := os.ReadFile(c.snapshotPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("[Controller] No snapshot found, starting fresh")

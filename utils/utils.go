@@ -10,11 +10,10 @@ import (
 )
 
 const (
-	ReplicationFactor      = 3 // number of replicas per chunk
-	HeartbeatInterval      = 5 * time.Second
-	HeartbeatTimeout       = 15 * time.Second
-	SnapshotInterval       = 30 * time.Second
-	ControllerSnapshotPath = "controller_snapshot.json"
+	ReplicationFactor = 3 // number of replicas per chunk
+	HeartbeatInterval = 5 * time.Second
+	HeartbeatTimeout  = 15 * time.Second
+	SnapshotInterval  = 30 * time.Second
 )
 
 /**
