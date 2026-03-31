@@ -390,10 +390,34 @@ func (client *Client) nodes() error {
 	return nil
 }
 
+/**
+ * Retrieve one chunk for the client.
+ * The client still tries the mapped nodes in order, but each request now carries
+ * the sibling replicas so the contacted Storage Node can self-repair first.
+ */
 func fetchChunk(loc *messages.ChunkMapping) ([]byte, error) {
-	// Fetch from primary storage
-	primaryNode := loc.Nodes[0]
-	addr := fmt.Sprintf("%s:%d", primaryNode.Hostname, primaryNode.Port)
+	if len(loc.Nodes) == 0 {
+		return nil, fmt.Errorf("no storage nodes available for %s[%d]", loc.ChunkInfo.Filename, loc.ChunkInfo.ChunkIndex)
+	}
+
+	var lastErr error
+	for idx, node := range loc.Nodes {
+		data, err := fetchChunkFromNode(loc.ChunkInfo, node, replicaHints(loc.Nodes, idx))
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("failed to retrieve %s[%d] from all replicas: %w", loc.ChunkInfo.Filename, loc.ChunkInfo.ChunkIndex, lastErr)
+}
+
+/**
+ * Fetch a chunk from one specific Storage Node, passing the remaining replicas
+ * as repair hints in case that node's local copy is corrupted.
+ */
+func fetchChunkFromNode(chunkInfo *messages.ChunkInfo, node *messages.NodeInfo, hints []*messages.NodeInfo) ([]byte, error) {
+	addr := fmt.Sprintf("%s:%d", node.Hostname, node.Port)
 
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
@@ -405,7 +429,8 @@ func fetchChunk(loc *messages.ChunkMapping) ([]byte, error) {
 	req := &messages.Wrapper{
 		Msg: &messages.Wrapper_RetrieveChunkRequest{
 			RetrieveChunkRequest: &messages.RetrieveChunkRequest{
-				ChunkInfo: loc.ChunkInfo,
+				ChunkInfo:    chunkInfo,
+				ReplicaHints: hints,
 			},
 		},
 	}
@@ -422,8 +447,19 @@ func fetchChunk(loc *messages.ChunkMapping) ([]byte, error) {
 		return nil, fmt.Errorf("storage node rejected retrieve: %s", resp.Error)
 	}
 
-	// TODO: Add checksum verification later
 	return resp.ChunkData, nil
+}
+
+// replicaHints returns every node except the one the client is contacting now.
+func replicaHints(nodes []*messages.NodeInfo, skipIdx int) []*messages.NodeInfo {
+	hints := make([]*messages.NodeInfo, 0, len(nodes)-1)
+	for idx, node := range nodes {
+		if idx == skipIdx {
+			continue
+		}
+		hints = append(hints, node)
+	}
+	return hints
 }
 
 /**

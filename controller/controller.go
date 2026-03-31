@@ -62,6 +62,8 @@ func handleConnection(controller *Controller, conn net.Conn) {
 			handleRegister(controller, msg.RegisterRequest, handler)
 		case *messages.Wrapper_Heartbeat:
 			handleHeartbeat(controller, msg.Heartbeat, handler)
+		case *messages.Wrapper_ChunkLocationsRequest:
+			handleChunkLocationsRequest(controller, msg.ChunkLocationsRequest, handler)
 		case *messages.Wrapper_StoreRequest:
 			handleStoreRequest(controller, msg.StoreRequest, handler)
 		case *messages.Wrapper_RetrieveRequest:
@@ -337,6 +339,69 @@ func handleRetrieveRequest(controller *Controller, msg *messages.RetrieveRequest
 		return
 	}
 	log.Printf("[Controller] Retrieve request for %s: %d chunks located", msg.Filename, fileMeta.ChunkCount)
+}
+
+/**
+ * Handle chunk-location lookup from a Storage Node.
+ * This is the fallback path when a node cannot repair a corrupted chunk
+ * from the replica hints that originally came from the client.
+ */
+func handleChunkLocationsRequest(controller *Controller, msg *messages.ChunkLocationsRequest, handler *messages.MessageHandler) {
+	controller.mu.RLock()
+	defer controller.mu.RUnlock()
+
+	fileMeta, exists := controller.files[msg.ChunkInfo.Filename]
+	if !exists {
+		handler.Send(&messages.Wrapper{
+			Msg: &messages.Wrapper_ChunkLocationsResponse{
+				ChunkLocationsResponse: &messages.ChunkLocationsResponse{
+					Ok:        false,
+					Error:     fmt.Sprintf("file %s does not exist", msg.ChunkInfo.Filename),
+					ChunkInfo: msg.ChunkInfo,
+				},
+			},
+		})
+		return
+	}
+
+	chunkMeta, exists := fileMeta.Chunks[msg.ChunkInfo.ChunkIndex]
+	if !exists {
+		handler.Send(&messages.Wrapper{
+			Msg: &messages.Wrapper_ChunkLocationsResponse{
+				ChunkLocationsResponse: &messages.ChunkLocationsResponse{
+					Ok:        false,
+					Error:     fmt.Sprintf("chunk %s[%d] does not exist", msg.ChunkInfo.Filename, msg.ChunkInfo.ChunkIndex),
+					ChunkInfo: msg.ChunkInfo,
+				},
+			},
+		})
+		return
+	}
+
+	nodes := make([]*messages.NodeInfo, 0, len(chunkMeta.Nodes))
+	for _, node := range chunkMeta.Nodes {
+		nodes = append(nodes, &messages.NodeInfo{
+			NodeId:   node.NodeId,
+			Hostname: node.Hostname,
+			Port:     node.Port,
+		})
+	}
+
+	if err := handler.Send(&messages.Wrapper{
+		Msg: &messages.Wrapper_ChunkLocationsResponse{
+			ChunkLocationsResponse: &messages.ChunkLocationsResponse{
+				Ok:        true,
+				ChunkInfo: msg.ChunkInfo,
+				Nodes:     nodes,
+			},
+		},
+	}); err != nil {
+		log.Printf("[Controller] Failed to send ChunkLocationsResponse: %v", err)
+		return
+	}
+
+	log.Printf("[Controller] Chunk location request for %s[%d]: %d node(s)",
+		msg.ChunkInfo.Filename, msg.ChunkInfo.ChunkIndex, len(nodes))
 }
 
 /**

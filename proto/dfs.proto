@@ -1,8 +1,10 @@
 syntax = "proto3";
 option go_package = "github.com/erwannd/dfs/messages;messages";
 
-// Storage -> Controller
-// Send when a Storage node just started
+/**
+ * Storage -> Controller
+ * Sent when a Storage node just started
+ */
 message RegisterRequest {
     string hostname = 1;    // hostname or IP
     int32 port = 2;         // listening port
@@ -150,9 +152,14 @@ message StoreChunkResponse {
     ChunkInfo chunk_info = 3;   // which chunk was successfully saved (useful for error reporting)
 }
 
-// Client -> Storage
+/** 
+ * Client -> Storage
+ * Retrieve a chunk from this node
+ * Include `replica_hints` in case the chunk is corrupted
+ */
 message RetrieveChunkRequest {
     ChunkInfo chunk_info = 1;
+    repeated NodeInfo replica_hints = 2;  // for fallback if the chunk is corrupted
 }
 
 // Storage -> Client
@@ -160,7 +167,10 @@ message RetrieveChunkResponse {
     bool ok = 1;
     string error = 2;       // empty if ok=true
     bytes chunk_data = 3;
-    bytes checksum = 4;     // client should verify checksum, if corrupted ask from one of the replicas
+    
+    // Temporary compatibility field for existing replication flow.
+    // TODO: Remove after replication and retrieve paths no longer depend on it.
+    bytes checksum = 4;
 }
 
 // Controller -> Storage
@@ -173,6 +183,45 @@ message DeleteChunkResponse {
     bool ok = 1;
     string error = 2;
     ChunkInfo chunk_info = 3;   // so Controller knows which chunk this ack is for
+}
+
+/**
+ * Storage -> Storage
+ * Request a chunk, if local copy is corrupted
+ */
+message RepairChunkRequest {
+    ChunkInfo chunk_info = 1;
+}
+
+/**
+ * Storage -> Storage
+ * Send a validated chunk to the requester node.
+ * If local copy is also corrupted, send ok=false and don't send the chunk
+ */
+message RepairChunkResponse {
+    bool ok = 1;
+    string error = 2;           // empty if ok=true
+    ChunkInfo chunk_info = 3;
+    bytes chunk_data = 4;
+}
+
+/**
+ * Storage -> Controller
+ * Asks for a list of nodes that holds the replica of a chunk
+ */
+message ChunkLocationsRequest {
+    ChunkInfo chunk_info = 1;   // which chunk
+}
+
+/**
+ * Controller -> Storage
+ * Responds with a list of nodes holding the chunk
+ */
+message ChunkLocationsResponse {
+    bool ok = 1;
+    string error = 2;
+    ChunkInfo chunk_info = 3;       // which chunk
+    repeated NodeInfo nodes = 4;    // which node holds this chunk
 }
 
 // --- EXTRAS ---
@@ -207,5 +256,11 @@ message Wrapper {
         // Controller <-> Storage
         DeleteChunkRequest delete_chunk_request = 20;
         DeleteChunkResponse delete_chunk_response = 21;
+
+        // Checksum validation
+        RepairChunkRequest repair_chunk_request = 22;
+        RepairChunkResponse repair_chunk_response = 23;
+        ChunkLocationsRequest chunk_locations_request = 24;
+        ChunkLocationsResponse chunk_locations_response = 25;
     }
 }

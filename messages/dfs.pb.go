@@ -21,8 +21,9 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// *
 // Storage -> Controller
-// Send when a Storage node just started
+// Sent when a Storage node just started
 type RegisterRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Hostname      string                 `protobuf:"bytes,1,opt,name=hostname,proto3" json:"hostname,omitempty"`                     // hostname or IP
@@ -1281,10 +1282,14 @@ func (x *StoreChunkResponse) GetChunkInfo() *ChunkInfo {
 	return nil
 }
 
+// *
 // Client -> Storage
+// Retrieve a chunk from this node
+// Include `replica_hints` in case the chunk is corrupted
 type RetrieveChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkInfo     *ChunkInfo             `protobuf:"bytes,1,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"`
+	ReplicaHints  []*NodeInfo            `protobuf:"bytes,2,rep,name=replica_hints,json=replicaHints,proto3" json:"replica_hints,omitempty"` // for fallback if the chunk is corrupted
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1326,13 +1331,22 @@ func (x *RetrieveChunkRequest) GetChunkInfo() *ChunkInfo {
 	return nil
 }
 
+func (x *RetrieveChunkRequest) GetReplicaHints() []*NodeInfo {
+	if x != nil {
+		return x.ReplicaHints
+	}
+	return nil
+}
+
 // Storage -> Client
 type RetrieveChunkResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // empty if ok=true
-	ChunkData     []byte                 `protobuf:"bytes,3,opt,name=chunk_data,json=chunkData,proto3" json:"chunk_data,omitempty"`
-	Checksum      []byte                 `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"` // client should verify checksum, if corrupted ask from one of the replicas
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Ok        bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error     string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // empty if ok=true
+	ChunkData []byte                 `protobuf:"bytes,3,opt,name=chunk_data,json=chunkData,proto3" json:"chunk_data,omitempty"`
+	// Temporary compatibility field for existing replication flow.
+	// TODO: Remove after replication and retrieve paths no longer depend on it.
+	Checksum      []byte `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1501,6 +1515,243 @@ func (x *DeleteChunkResponse) GetChunkInfo() *ChunkInfo {
 	return nil
 }
 
+// *
+// Storage -> Storage
+// Request a chunk, if local copy is corrupted
+type RepairChunkRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkInfo     *ChunkInfo             `protobuf:"bytes,1,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RepairChunkRequest) Reset() {
+	*x = RepairChunkRequest{}
+	mi := &file_dfs_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RepairChunkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RepairChunkRequest) ProtoMessage() {}
+
+func (x *RepairChunkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RepairChunkRequest.ProtoReflect.Descriptor instead.
+func (*RepairChunkRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *RepairChunkRequest) GetChunkInfo() *ChunkInfo {
+	if x != nil {
+		return x.ChunkInfo
+	}
+	return nil
+}
+
+// *
+// Storage -> Storage
+// Send a validated chunk to the requester node.
+// If local copy is also corrupted, send ok=false and don't send the chunk
+type RepairChunkResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // empty if ok=true
+	ChunkInfo     *ChunkInfo             `protobuf:"bytes,3,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"`
+	ChunkData     []byte                 `protobuf:"bytes,4,opt,name=chunk_data,json=chunkData,proto3" json:"chunk_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RepairChunkResponse) Reset() {
+	*x = RepairChunkResponse{}
+	mi := &file_dfs_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RepairChunkResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RepairChunkResponse) ProtoMessage() {}
+
+func (x *RepairChunkResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RepairChunkResponse.ProtoReflect.Descriptor instead.
+func (*RepairChunkResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *RepairChunkResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *RepairChunkResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *RepairChunkResponse) GetChunkInfo() *ChunkInfo {
+	if x != nil {
+		return x.ChunkInfo
+	}
+	return nil
+}
+
+func (x *RepairChunkResponse) GetChunkData() []byte {
+	if x != nil {
+		return x.ChunkData
+	}
+	return nil
+}
+
+// *
+// Storage -> Controller
+// Asks for a list of nodes that holds the replica of a chunk
+type ChunkLocationsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkInfo     *ChunkInfo             `protobuf:"bytes,1,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"` // which chunk
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChunkLocationsRequest) Reset() {
+	*x = ChunkLocationsRequest{}
+	mi := &file_dfs_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChunkLocationsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChunkLocationsRequest) ProtoMessage() {}
+
+func (x *ChunkLocationsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChunkLocationsRequest.ProtoReflect.Descriptor instead.
+func (*ChunkLocationsRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ChunkLocationsRequest) GetChunkInfo() *ChunkInfo {
+	if x != nil {
+		return x.ChunkInfo
+	}
+	return nil
+}
+
+// *
+// Controller -> Storage
+// Responds with a list of nodes holding the chunk
+type ChunkLocationsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	ChunkInfo     *ChunkInfo             `protobuf:"bytes,3,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"` // which chunk
+	Nodes         []*NodeInfo            `protobuf:"bytes,4,rep,name=nodes,proto3" json:"nodes,omitempty"`                          // which node holds this chunk
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChunkLocationsResponse) Reset() {
+	*x = ChunkLocationsResponse{}
+	mi := &file_dfs_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChunkLocationsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChunkLocationsResponse) ProtoMessage() {}
+
+func (x *ChunkLocationsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChunkLocationsResponse.ProtoReflect.Descriptor instead.
+func (*ChunkLocationsResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ChunkLocationsResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ChunkLocationsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ChunkLocationsResponse) GetChunkInfo() *ChunkInfo {
+	if x != nil {
+		return x.ChunkInfo
+	}
+	return nil
+}
+
+func (x *ChunkLocationsResponse) GetNodes() []*NodeInfo {
+	if x != nil {
+		return x.Nodes
+	}
+	return nil
+}
+
 type Wrapper struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Types that are valid to be assigned to Msg:
@@ -1526,6 +1777,10 @@ type Wrapper struct {
 	//	*Wrapper_RetrieveChunkResponse
 	//	*Wrapper_DeleteChunkRequest
 	//	*Wrapper_DeleteChunkResponse
+	//	*Wrapper_RepairChunkRequest
+	//	*Wrapper_RepairChunkResponse
+	//	*Wrapper_ChunkLocationsRequest
+	//	*Wrapper_ChunkLocationsResponse
 	Msg           isWrapper_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1533,7 +1788,7 @@ type Wrapper struct {
 
 func (x *Wrapper) Reset() {
 	*x = Wrapper{}
-	mi := &file_dfs_proto_msgTypes[26]
+	mi := &file_dfs_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1545,7 +1800,7 @@ func (x *Wrapper) String() string {
 func (*Wrapper) ProtoMessage() {}
 
 func (x *Wrapper) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[26]
+	mi := &file_dfs_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1558,7 +1813,7 @@ func (x *Wrapper) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Wrapper.ProtoReflect.Descriptor instead.
 func (*Wrapper) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{26}
+	return file_dfs_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *Wrapper) GetMsg() isWrapper_Msg {
@@ -1757,6 +2012,42 @@ func (x *Wrapper) GetDeleteChunkResponse() *DeleteChunkResponse {
 	return nil
 }
 
+func (x *Wrapper) GetRepairChunkRequest() *RepairChunkRequest {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_RepairChunkRequest); ok {
+			return x.RepairChunkRequest
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetRepairChunkResponse() *RepairChunkResponse {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_RepairChunkResponse); ok {
+			return x.RepairChunkResponse
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetChunkLocationsRequest() *ChunkLocationsRequest {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_ChunkLocationsRequest); ok {
+			return x.ChunkLocationsRequest
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetChunkLocationsResponse() *ChunkLocationsResponse {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_ChunkLocationsResponse); ok {
+			return x.ChunkLocationsResponse
+		}
+	}
+	return nil
+}
+
 type isWrapper_Msg interface {
 	isWrapper_Msg()
 }
@@ -1849,6 +2140,23 @@ type Wrapper_DeleteChunkResponse struct {
 	DeleteChunkResponse *DeleteChunkResponse `protobuf:"bytes,21,opt,name=delete_chunk_response,json=deleteChunkResponse,proto3,oneof"`
 }
 
+type Wrapper_RepairChunkRequest struct {
+	// Checksum validation
+	RepairChunkRequest *RepairChunkRequest `protobuf:"bytes,22,opt,name=repair_chunk_request,json=repairChunkRequest,proto3,oneof"`
+}
+
+type Wrapper_RepairChunkResponse struct {
+	RepairChunkResponse *RepairChunkResponse `protobuf:"bytes,23,opt,name=repair_chunk_response,json=repairChunkResponse,proto3,oneof"`
+}
+
+type Wrapper_ChunkLocationsRequest struct {
+	ChunkLocationsRequest *ChunkLocationsRequest `protobuf:"bytes,24,opt,name=chunk_locations_request,json=chunkLocationsRequest,proto3,oneof"`
+}
+
+type Wrapper_ChunkLocationsResponse struct {
+	ChunkLocationsResponse *ChunkLocationsResponse `protobuf:"bytes,25,opt,name=chunk_locations_response,json=chunkLocationsResponse,proto3,oneof"`
+}
+
 func (*Wrapper_RegisterRequest) isWrapper_Msg() {}
 
 func (*Wrapper_RegisterResponse) isWrapper_Msg() {}
@@ -1890,6 +2198,14 @@ func (*Wrapper_RetrieveChunkResponse) isWrapper_Msg() {}
 func (*Wrapper_DeleteChunkRequest) isWrapper_Msg() {}
 
 func (*Wrapper_DeleteChunkResponse) isWrapper_Msg() {}
+
+func (*Wrapper_RepairChunkRequest) isWrapper_Msg() {}
+
+func (*Wrapper_RepairChunkResponse) isWrapper_Msg() {}
+
+func (*Wrapper_ChunkLocationsRequest) isWrapper_Msg() {}
+
+func (*Wrapper_ChunkLocationsResponse) isWrapper_Msg() {}
 
 var File_dfs_proto protoreflect.FileDescriptor
 
@@ -1993,11 +2309,12 @@ const file_dfs_proto_rawDesc = "" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12)\n" +
 	"\n" +
 	"chunk_info\x18\x03 \x01(\v2\n" +
-	".ChunkInfoR\tchunkInfo\"A\n" +
+	".ChunkInfoR\tchunkInfo\"q\n" +
 	"\x14RetrieveChunkRequest\x12)\n" +
 	"\n" +
 	"chunk_info\x18\x01 \x01(\v2\n" +
-	".ChunkInfoR\tchunkInfo\"x\n" +
+	".ChunkInfoR\tchunkInfo\x12.\n" +
+	"\rreplica_hints\x18\x02 \x03(\v2\t.NodeInfoR\freplicaHints\"x\n" +
 	"\x15RetrieveChunkResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1d\n" +
@@ -2013,8 +2330,30 @@ const file_dfs_proto_rawDesc = "" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12)\n" +
 	"\n" +
 	"chunk_info\x18\x03 \x01(\v2\n" +
-	".ChunkInfoR\tchunkInfo\"\xec\n" +
+	".ChunkInfoR\tchunkInfo\"?\n" +
+	"\x12RepairChunkRequest\x12)\n" +
 	"\n" +
+	"chunk_info\x18\x01 \x01(\v2\n" +
+	".ChunkInfoR\tchunkInfo\"\x85\x01\n" +
+	"\x13RepairChunkResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12)\n" +
+	"\n" +
+	"chunk_info\x18\x03 \x01(\v2\n" +
+	".ChunkInfoR\tchunkInfo\x12\x1d\n" +
+	"\n" +
+	"chunk_data\x18\x04 \x01(\fR\tchunkData\"B\n" +
+	"\x15ChunkLocationsRequest\x12)\n" +
+	"\n" +
+	"chunk_info\x18\x01 \x01(\v2\n" +
+	".ChunkInfoR\tchunkInfo\"\x8a\x01\n" +
+	"\x16ChunkLocationsResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12)\n" +
+	"\n" +
+	"chunk_info\x18\x03 \x01(\v2\n" +
+	".ChunkInfoR\tchunkInfo\x12\x1f\n" +
+	"\x05nodes\x18\x04 \x03(\v2\t.NodeInfoR\x05nodes\"\xa8\r\n" +
 	"\aWrapper\x12=\n" +
 	"\x10register_request\x18\x01 \x01(\v2\x10.RegisterRequestH\x00R\x0fregisterRequest\x12@\n" +
 	"\x11register_response\x18\x02 \x01(\v2\x11.RegisterResponseH\x00R\x10registerResponse\x12*\n" +
@@ -2038,7 +2377,11 @@ const file_dfs_proto_rawDesc = "" +
 	"\x16retrieve_chunk_request\x18\x12 \x01(\v2\x15.RetrieveChunkRequestH\x00R\x14retrieveChunkRequest\x12P\n" +
 	"\x17retrieve_chunk_response\x18\x13 \x01(\v2\x16.RetrieveChunkResponseH\x00R\x15retrieveChunkResponse\x12G\n" +
 	"\x14delete_chunk_request\x18\x14 \x01(\v2\x13.DeleteChunkRequestH\x00R\x12deleteChunkRequest\x12J\n" +
-	"\x15delete_chunk_response\x18\x15 \x01(\v2\x14.DeleteChunkResponseH\x00R\x13deleteChunkResponseB\x05\n" +
+	"\x15delete_chunk_response\x18\x15 \x01(\v2\x14.DeleteChunkResponseH\x00R\x13deleteChunkResponse\x12G\n" +
+	"\x14repair_chunk_request\x18\x16 \x01(\v2\x13.RepairChunkRequestH\x00R\x12repairChunkRequest\x12J\n" +
+	"\x15repair_chunk_response\x18\x17 \x01(\v2\x14.RepairChunkResponseH\x00R\x13repairChunkResponse\x12P\n" +
+	"\x17chunk_locations_request\x18\x18 \x01(\v2\x16.ChunkLocationsRequestH\x00R\x15chunkLocationsRequest\x12S\n" +
+	"\x18chunk_locations_response\x18\x19 \x01(\v2\x17.ChunkLocationsResponseH\x00R\x16chunkLocationsResponseB\x05\n" +
 	"\x03msgB*Z(github.com/erwannd/dfs/messages;messagesb\x06proto3"
 
 var (
@@ -2053,35 +2396,39 @@ func file_dfs_proto_rawDescGZIP() []byte {
 	return file_dfs_proto_rawDescData
 }
 
-var file_dfs_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_dfs_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
 var file_dfs_proto_goTypes = []any{
-	(*RegisterRequest)(nil),       // 0: RegisterRequest
-	(*RegisterResponse)(nil),      // 1: RegisterResponse
-	(*Heartbeat)(nil),             // 2: Heartbeat
-	(*HeartbeatResponse)(nil),     // 3: HeartbeatResponse
-	(*ReplicateRequest)(nil),      // 4: ReplicateRequest
-	(*ChunkInfo)(nil),             // 5: ChunkInfo
-	(*NodeInfo)(nil),              // 6: NodeInfo
-	(*ChunkMapping)(nil),          // 7: ChunkMapping
-	(*StoreRequest)(nil),          // 8: StoreRequest
-	(*StoreResponse)(nil),         // 9: StoreResponse
-	(*RetrieveRequest)(nil),       // 10: RetrieveRequest
-	(*RetrieveResponse)(nil),      // 11: RetrieveResponse
-	(*DeleteRequest)(nil),         // 12: DeleteRequest
-	(*DeleteResponse)(nil),        // 13: DeleteResponse
-	(*ListRequest)(nil),           // 14: ListRequest
-	(*FileInfo)(nil),              // 15: FileInfo
-	(*ListResponse)(nil),          // 16: ListResponse
-	(*ClusterInfoRequest)(nil),    // 17: ClusterInfoRequest
-	(*NodeStats)(nil),             // 18: NodeStats
-	(*ClusterInfoResponse)(nil),   // 19: ClusterInfoResponse
-	(*StoreChunkRequest)(nil),     // 20: StoreChunkRequest
-	(*StoreChunkResponse)(nil),    // 21: StoreChunkResponse
-	(*RetrieveChunkRequest)(nil),  // 22: RetrieveChunkRequest
-	(*RetrieveChunkResponse)(nil), // 23: RetrieveChunkResponse
-	(*DeleteChunkRequest)(nil),    // 24: DeleteChunkRequest
-	(*DeleteChunkResponse)(nil),   // 25: DeleteChunkResponse
-	(*Wrapper)(nil),               // 26: Wrapper
+	(*RegisterRequest)(nil),        // 0: RegisterRequest
+	(*RegisterResponse)(nil),       // 1: RegisterResponse
+	(*Heartbeat)(nil),              // 2: Heartbeat
+	(*HeartbeatResponse)(nil),      // 3: HeartbeatResponse
+	(*ReplicateRequest)(nil),       // 4: ReplicateRequest
+	(*ChunkInfo)(nil),              // 5: ChunkInfo
+	(*NodeInfo)(nil),               // 6: NodeInfo
+	(*ChunkMapping)(nil),           // 7: ChunkMapping
+	(*StoreRequest)(nil),           // 8: StoreRequest
+	(*StoreResponse)(nil),          // 9: StoreResponse
+	(*RetrieveRequest)(nil),        // 10: RetrieveRequest
+	(*RetrieveResponse)(nil),       // 11: RetrieveResponse
+	(*DeleteRequest)(nil),          // 12: DeleteRequest
+	(*DeleteResponse)(nil),         // 13: DeleteResponse
+	(*ListRequest)(nil),            // 14: ListRequest
+	(*FileInfo)(nil),               // 15: FileInfo
+	(*ListResponse)(nil),           // 16: ListResponse
+	(*ClusterInfoRequest)(nil),     // 17: ClusterInfoRequest
+	(*NodeStats)(nil),              // 18: NodeStats
+	(*ClusterInfoResponse)(nil),    // 19: ClusterInfoResponse
+	(*StoreChunkRequest)(nil),      // 20: StoreChunkRequest
+	(*StoreChunkResponse)(nil),     // 21: StoreChunkResponse
+	(*RetrieveChunkRequest)(nil),   // 22: RetrieveChunkRequest
+	(*RetrieveChunkResponse)(nil),  // 23: RetrieveChunkResponse
+	(*DeleteChunkRequest)(nil),     // 24: DeleteChunkRequest
+	(*DeleteChunkResponse)(nil),    // 25: DeleteChunkResponse
+	(*RepairChunkRequest)(nil),     // 26: RepairChunkRequest
+	(*RepairChunkResponse)(nil),    // 27: RepairChunkResponse
+	(*ChunkLocationsRequest)(nil),  // 28: ChunkLocationsRequest
+	(*ChunkLocationsResponse)(nil), // 29: ChunkLocationsResponse
+	(*Wrapper)(nil),                // 30: Wrapper
 }
 var file_dfs_proto_depIdxs = []int32{
 	5,  // 0: Heartbeat.new_chunks:type_name -> ChunkInfo
@@ -2098,34 +2445,44 @@ var file_dfs_proto_depIdxs = []int32{
 	6,  // 11: StoreChunkRequest.pipeline:type_name -> NodeInfo
 	5,  // 12: StoreChunkResponse.chunk_info:type_name -> ChunkInfo
 	5,  // 13: RetrieveChunkRequest.chunk_info:type_name -> ChunkInfo
-	5,  // 14: DeleteChunkRequest.chunk_info:type_name -> ChunkInfo
-	5,  // 15: DeleteChunkResponse.chunk_info:type_name -> ChunkInfo
-	0,  // 16: Wrapper.register_request:type_name -> RegisterRequest
-	1,  // 17: Wrapper.register_response:type_name -> RegisterResponse
-	2,  // 18: Wrapper.heartbeat:type_name -> Heartbeat
-	3,  // 19: Wrapper.heartbeat_response:type_name -> HeartbeatResponse
-	4,  // 20: Wrapper.replicate_request:type_name -> ReplicateRequest
-	8,  // 21: Wrapper.store_request:type_name -> StoreRequest
-	9,  // 22: Wrapper.store_response:type_name -> StoreResponse
-	10, // 23: Wrapper.retrieve_request:type_name -> RetrieveRequest
-	11, // 24: Wrapper.retrieve_response:type_name -> RetrieveResponse
-	12, // 25: Wrapper.delete_request:type_name -> DeleteRequest
-	13, // 26: Wrapper.delete_response:type_name -> DeleteResponse
-	14, // 27: Wrapper.list_request:type_name -> ListRequest
-	16, // 28: Wrapper.list_response:type_name -> ListResponse
-	17, // 29: Wrapper.cluster_info_request:type_name -> ClusterInfoRequest
-	19, // 30: Wrapper.cluster_info_response:type_name -> ClusterInfoResponse
-	20, // 31: Wrapper.store_chunk_request:type_name -> StoreChunkRequest
-	21, // 32: Wrapper.store_chunk_response:type_name -> StoreChunkResponse
-	22, // 33: Wrapper.retrieve_chunk_request:type_name -> RetrieveChunkRequest
-	23, // 34: Wrapper.retrieve_chunk_response:type_name -> RetrieveChunkResponse
-	24, // 35: Wrapper.delete_chunk_request:type_name -> DeleteChunkRequest
-	25, // 36: Wrapper.delete_chunk_response:type_name -> DeleteChunkResponse
-	37, // [37:37] is the sub-list for method output_type
-	37, // [37:37] is the sub-list for method input_type
-	37, // [37:37] is the sub-list for extension type_name
-	37, // [37:37] is the sub-list for extension extendee
-	0,  // [0:37] is the sub-list for field type_name
+	6,  // 14: RetrieveChunkRequest.replica_hints:type_name -> NodeInfo
+	5,  // 15: DeleteChunkRequest.chunk_info:type_name -> ChunkInfo
+	5,  // 16: DeleteChunkResponse.chunk_info:type_name -> ChunkInfo
+	5,  // 17: RepairChunkRequest.chunk_info:type_name -> ChunkInfo
+	5,  // 18: RepairChunkResponse.chunk_info:type_name -> ChunkInfo
+	5,  // 19: ChunkLocationsRequest.chunk_info:type_name -> ChunkInfo
+	5,  // 20: ChunkLocationsResponse.chunk_info:type_name -> ChunkInfo
+	6,  // 21: ChunkLocationsResponse.nodes:type_name -> NodeInfo
+	0,  // 22: Wrapper.register_request:type_name -> RegisterRequest
+	1,  // 23: Wrapper.register_response:type_name -> RegisterResponse
+	2,  // 24: Wrapper.heartbeat:type_name -> Heartbeat
+	3,  // 25: Wrapper.heartbeat_response:type_name -> HeartbeatResponse
+	4,  // 26: Wrapper.replicate_request:type_name -> ReplicateRequest
+	8,  // 27: Wrapper.store_request:type_name -> StoreRequest
+	9,  // 28: Wrapper.store_response:type_name -> StoreResponse
+	10, // 29: Wrapper.retrieve_request:type_name -> RetrieveRequest
+	11, // 30: Wrapper.retrieve_response:type_name -> RetrieveResponse
+	12, // 31: Wrapper.delete_request:type_name -> DeleteRequest
+	13, // 32: Wrapper.delete_response:type_name -> DeleteResponse
+	14, // 33: Wrapper.list_request:type_name -> ListRequest
+	16, // 34: Wrapper.list_response:type_name -> ListResponse
+	17, // 35: Wrapper.cluster_info_request:type_name -> ClusterInfoRequest
+	19, // 36: Wrapper.cluster_info_response:type_name -> ClusterInfoResponse
+	20, // 37: Wrapper.store_chunk_request:type_name -> StoreChunkRequest
+	21, // 38: Wrapper.store_chunk_response:type_name -> StoreChunkResponse
+	22, // 39: Wrapper.retrieve_chunk_request:type_name -> RetrieveChunkRequest
+	23, // 40: Wrapper.retrieve_chunk_response:type_name -> RetrieveChunkResponse
+	24, // 41: Wrapper.delete_chunk_request:type_name -> DeleteChunkRequest
+	25, // 42: Wrapper.delete_chunk_response:type_name -> DeleteChunkResponse
+	26, // 43: Wrapper.repair_chunk_request:type_name -> RepairChunkRequest
+	27, // 44: Wrapper.repair_chunk_response:type_name -> RepairChunkResponse
+	28, // 45: Wrapper.chunk_locations_request:type_name -> ChunkLocationsRequest
+	29, // 46: Wrapper.chunk_locations_response:type_name -> ChunkLocationsResponse
+	47, // [47:47] is the sub-list for method output_type
+	47, // [47:47] is the sub-list for method input_type
+	47, // [47:47] is the sub-list for extension type_name
+	47, // [47:47] is the sub-list for extension extendee
+	0,  // [0:47] is the sub-list for field type_name
 }
 
 func init() { file_dfs_proto_init() }
@@ -2133,7 +2490,7 @@ func file_dfs_proto_init() {
 	if File_dfs_proto != nil {
 		return
 	}
-	file_dfs_proto_msgTypes[26].OneofWrappers = []any{
+	file_dfs_proto_msgTypes[30].OneofWrappers = []any{
 		(*Wrapper_RegisterRequest)(nil),
 		(*Wrapper_RegisterResponse)(nil),
 		(*Wrapper_Heartbeat)(nil),
@@ -2155,6 +2512,10 @@ func file_dfs_proto_init() {
 		(*Wrapper_RetrieveChunkResponse)(nil),
 		(*Wrapper_DeleteChunkRequest)(nil),
 		(*Wrapper_DeleteChunkResponse)(nil),
+		(*Wrapper_RepairChunkRequest)(nil),
+		(*Wrapper_RepairChunkResponse)(nil),
+		(*Wrapper_ChunkLocationsRequest)(nil),
+		(*Wrapper_ChunkLocationsResponse)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -2162,7 +2523,7 @@ func file_dfs_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dfs_proto_rawDesc), len(file_dfs_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   31,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
