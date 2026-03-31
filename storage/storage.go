@@ -158,7 +158,7 @@ func (s *StorageNode) handleReplicateRequest(req *messages.ReplicateRequest) {
 	}
 
 	// Store the replicated chunk and recomputed checksum locally.
-	if _, _, err := s.persistRepairedChunk(req.ChunkInfo, data); err != nil {
+	if err := s.persistRepairedChunk(req.ChunkInfo, data); err != nil {
 		log.Printf("[StorageNode] Failed to persist replicated chunk %s[%d]: %v",
 			req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex, err)
 		return
@@ -267,13 +267,13 @@ func (s *StorageNode) handleStoreChunk(msg *messages.StoreChunkRequest, handler 
 
 func (s *StorageNode) handleRetrieveChunk(msg *messages.RetrieveChunkRequest, handler *messages.MessageHandler) {
 	// Fast path: serve the local chunk if its on-disk checksum still matches.
-	data, checksum, err := s.readVerifiedLocalChunk(msg.ChunkInfo)
+	data, err := s.readVerifiedLocalChunk(msg.ChunkInfo)
 	if err != nil {
 		log.Printf("[StorageNode] Local chunk verification failed for %s[%d]: %v",
 			msg.ChunkInfo.Filename, msg.ChunkInfo.ChunkIndex, err)
 
 		// Slow path: repair from a replica, then return the repaired bytes.
-		data, checksum, err = s.repairChunk(msg.ChunkInfo, msg.ReplicaHints)
+		data, err = s.repairChunk(msg.ChunkInfo, msg.ReplicaHints)
 		if err != nil {
 			resp := &messages.Wrapper{
 				Msg: &messages.Wrapper_RetrieveChunkResponse{
@@ -297,7 +297,6 @@ func (s *StorageNode) handleRetrieveChunk(msg *messages.RetrieveChunkRequest, ha
 			RetrieveChunkResponse: &messages.RetrieveChunkResponse{
 				Ok:        true,
 				ChunkData: data,
-				Checksum:  checksum,
 			},
 		},
 	}
@@ -314,7 +313,7 @@ func (s *StorageNode) handleRetrieveChunk(msg *messages.RetrieveChunkRequest, ha
  * local copy, or reports failure immediately.
  */
 func (s *StorageNode) handleRepairChunk(msg *messages.RepairChunkRequest, handler *messages.MessageHandler) {
-	data, _, err := s.readVerifiedLocalChunk(msg.ChunkInfo)
+	data, err := s.readVerifiedLocalChunk(msg.ChunkInfo)
 	if err != nil {
 		resp := &messages.Wrapper{
 			Msg: &messages.Wrapper_RepairChunkResponse{
@@ -443,25 +442,25 @@ func errorResponse(chunkInfo *messages.ChunkInfo, errMsg string) *messages.Wrapp
  * Missing checksum files are treated as corruption so the caller can repair
  * from another replica instead of serving unverified data.
  */
-func (s *StorageNode) readVerifiedLocalChunk(chunkInfo *messages.ChunkInfo) ([]byte, []byte, error) {
+func (s *StorageNode) readVerifiedLocalChunk(chunkInfo *messages.ChunkInfo) ([]byte, error) {
 	chunkPath := utils.ChunkPath(s.storageDir, chunkInfo.Filename, chunkInfo.ChunkIndex)
 	checksumPath := utils.ChecksumPath(s.storageDir, chunkInfo.Filename, chunkInfo.ChunkIndex)
 
 	data, err := os.ReadFile(chunkPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
+		return nil, fmt.Errorf("failed to read chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
 	}
 
 	checksum, err := os.ReadFile(checksumPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read checksum for %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
+		return nil, fmt.Errorf("failed to read checksum for %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
 	}
 
 	if !utils.VerifyChecksum(data, checksum) {
-		return nil, nil, fmt.Errorf("checksum mismatch for %s[%d]", chunkInfo.Filename, chunkInfo.ChunkIndex)
+		return nil, fmt.Errorf("checksum mismatch for %s[%d]", chunkInfo.Filename, chunkInfo.ChunkIndex)
 	}
 
-	return data, checksum, nil
+	return data, nil
 }
 
 /**
@@ -469,26 +468,33 @@ func (s *StorageNode) readVerifiedLocalChunk(chunkInfo *messages.ChunkInfo) ([]b
  * First try the replica hints from the client request, then fall back to the
  * controller for a refreshed holder list if those hints are stale.
  */
-func (s *StorageNode) repairChunk(chunkInfo *messages.ChunkInfo, replicaHints []*messages.NodeInfo) ([]byte, []byte, error) {
+func (s *StorageNode) repairChunk(chunkInfo *messages.ChunkInfo, replicaHints []*messages.NodeInfo) ([]byte, error) {
 	tried := make(map[uint32]struct{})
 	tried[s.nodeId] = struct{}{}
 
 	data, err := s.tryRepairCandidates(chunkInfo, replicaHints, tried)
 	if err == nil {
-		return s.persistRepairedChunk(chunkInfo, data)
+		if err := s.persistRepairedChunk(chunkInfo, data); err != nil {
+			return nil, err
+		}
+		return data, nil
 	}
 
 	nodes, locErr := s.fetchChunkLocations(chunkInfo)
 	if locErr != nil {
-		return nil, nil, fmt.Errorf("failed to repair chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, locErr)
+		return nil, fmt.Errorf("failed to repair chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, locErr)
 	}
 
 	data, err = s.tryRepairCandidates(chunkInfo, nodes, tried)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to repair chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
+		return nil, fmt.Errorf("failed to repair chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
 	}
 
-	return s.persistRepairedChunk(chunkInfo, data)
+	if err := s.persistRepairedChunk(chunkInfo, data); err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
 
 /**
@@ -565,20 +571,20 @@ func (s *StorageNode) fetchRepairChunk(node *messages.NodeInfo, chunkInfo *messa
  * Overwrite the corrupted local copy with data fetched from a healthy replica,
  * then persist the recomputed checksum sidecar.
  */
-func (s *StorageNode) persistRepairedChunk(chunkInfo *messages.ChunkInfo, data []byte) ([]byte, []byte, error) {
+func (s *StorageNode) persistRepairedChunk(chunkInfo *messages.ChunkInfo, data []byte) error {
 	checksum := utils.ComputeChecksum(data)
 	chunkPath := utils.ChunkPath(s.storageDir, chunkInfo.Filename, chunkInfo.ChunkIndex)
 	checksumPath := utils.ChecksumPath(s.storageDir, chunkInfo.Filename, chunkInfo.ChunkIndex)
 
 	if err := os.WriteFile(chunkPath, data, 0644); err != nil {
-		return nil, nil, fmt.Errorf("failed to write repaired chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
+		return fmt.Errorf("failed to write repaired chunk %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
 	}
 	if err := os.WriteFile(checksumPath, checksum, 0644); err != nil {
-		return nil, nil, fmt.Errorf("failed to write repaired checksum %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
+		return fmt.Errorf("failed to write repaired checksum %s[%d]: %w", chunkInfo.Filename, chunkInfo.ChunkIndex, err)
 	}
 
 	log.Printf("[StorageNode] Repaired chunk %s[%d] from replica", chunkInfo.Filename, chunkInfo.ChunkIndex)
-	return data, checksum, nil
+	return nil
 }
 
 /**

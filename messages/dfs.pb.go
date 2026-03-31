@@ -1338,15 +1338,13 @@ func (x *RetrieveChunkRequest) GetReplicaHints() []*NodeInfo {
 	return nil
 }
 
+// *
 // Storage -> Client
 type RetrieveChunkResponse struct {
-	state     protoimpl.MessageState `protogen:"open.v1"`
-	Ok        bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
-	Error     string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // empty if ok=true
-	ChunkData []byte                 `protobuf:"bytes,3,opt,name=chunk_data,json=chunkData,proto3" json:"chunk_data,omitempty"`
-	// Temporary compatibility field for existing replication flow.
-	// TODO: Remove after replication and retrieve paths no longer depend on it.
-	Checksum      []byte `protobuf:"bytes,4,opt,name=checksum,proto3" json:"checksum,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // empty if ok=true
+	ChunkData     []byte                 `protobuf:"bytes,3,opt,name=chunk_data,json=chunkData,proto3" json:"chunk_data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1398,13 +1396,6 @@ func (x *RetrieveChunkResponse) GetError() string {
 func (x *RetrieveChunkResponse) GetChunkData() []byte {
 	if x != nil {
 		return x.ChunkData
-	}
-	return nil
-}
-
-func (x *RetrieveChunkResponse) GetChecksum() []byte {
-	if x != nil {
-		return x.Checksum
 	}
 	return nil
 }
@@ -2314,13 +2305,12 @@ const file_dfs_proto_rawDesc = "" +
 	"\n" +
 	"chunk_info\x18\x01 \x01(\v2\n" +
 	".ChunkInfoR\tchunkInfo\x12.\n" +
-	"\rreplica_hints\x18\x02 \x03(\v2\t.NodeInfoR\freplicaHints\"x\n" +
+	"\rreplica_hints\x18\x02 \x03(\v2\t.NodeInfoR\freplicaHints\"\\\n" +
 	"\x15RetrieveChunkResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1d\n" +
 	"\n" +
-	"chunk_data\x18\x03 \x01(\fR\tchunkData\x12\x1a\n" +
-	"\bchecksum\x18\x04 \x01(\fR\bchecksum\"?\n" +
+	"chunk_data\x18\x03 \x01(\fR\tchunkData\"?\n" +
 	"\x12DeleteChunkRequest\x12)\n" +
 	"\n" +
 	"chunk_info\x18\x01 \x01(\v2\n" +

@@ -162,15 +162,13 @@ message RetrieveChunkRequest {
     repeated NodeInfo replica_hints = 2;  // for fallback if the chunk is corrupted
 }
 
-// Storage -> Client
+/** 
+ * Storage -> Client
+ */
 message RetrieveChunkResponse {
     bool ok = 1;
     string error = 2;       // empty if ok=true
     bytes chunk_data = 3;
-    
-    // Temporary compatibility field for existing replication flow.
-    // TODO: Remove after replication and retrieve paths no longer depend on it.
-    bytes checksum = 4;
 }
 
 // Controller -> Storage
