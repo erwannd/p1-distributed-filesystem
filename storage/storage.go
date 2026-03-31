@@ -124,66 +124,54 @@ func (s *StorageNode) heartbeatLoop(handler *messages.MessageHandler) {
 	}
 }
 
+/**
+ * Handle a re-replication request from the Controller.
+ * The destination node fetches a verified local copy from another storage node.
+ * If the suggested source cannot serve a valid copy, fall back to the Controller
+ * for a refreshed holder list and try the remaining replicas.
+ */
 func (s *StorageNode) handleReplicateRequest(req *messages.ReplicateRequest) {
-	// 1. Fetch chunk from source node
-	addr := fmt.Sprintf("%s:%d", req.SrcHost, req.SrcPort)
-	conn, err := net.Dial("tcp", addr)
+	source := &messages.NodeInfo{
+		Hostname: req.SrcHost,
+		Port:     req.SrcPort,
+	}
+
+	data, err := s.fetchRepairChunk(source, req.ChunkInfo)
 	if err != nil {
-		log.Printf("[StorageNode] Failed to connect to source %s: %v", addr, err)
-		return
-	}
-	srcHandler := messages.NewMessageHandler(conn)
-	defer srcHandler.Close()
+		log.Printf("[StorageNode] Suggested replication source %s:%d failed for %s[%d]: %v",
+			req.SrcHost, req.SrcPort, req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex, err)
 
-	fetchReq := &messages.Wrapper{
-		Msg: &messages.Wrapper_RetrieveChunkRequest{
-			RetrieveChunkRequest: &messages.RetrieveChunkRequest{
-				ChunkInfo: req.ChunkInfo,
-			},
-		},
-	}
-	if err := srcHandler.Send(fetchReq); err != nil {
-		log.Printf("[StorageNode] Failed to fetch chunk for replication: %v", err)
-		return
+		nodes, locErr := s.fetchChunkLocations(req.ChunkInfo)
+		if locErr != nil {
+			log.Printf("[StorageNode] Failed to refresh replication sources for %s[%d]: %v",
+				req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex, locErr)
+			return
+		}
+
+		tried := map[uint32]struct{}{s.nodeId: {}}
+		data, err = s.tryRepairCandidates(req.ChunkInfo, nodes, tried)
+		if err != nil {
+			log.Printf("[StorageNode] Failed to fetch replicated chunk %s[%d] from refreshed sources: %v",
+				req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex, err)
+			return
+		}
 	}
 
-	fetchWrapper, err := srcHandler.Receive()
-	if err != nil {
-		log.Printf("[StorageNode] Failed to receive chunk for replication: %v", err)
-		return
-	}
-	fetchResp := fetchWrapper.Msg.(*messages.Wrapper_RetrieveChunkResponse).RetrieveChunkResponse
-	if !fetchResp.Ok {
-		log.Printf("[StorageNode] Source rejected replication fetch: %s", fetchResp.Error)
+	// Store the replicated chunk and recomputed checksum locally.
+	if _, _, err := s.persistRepairedChunk(req.ChunkInfo, data); err != nil {
+		log.Printf("[StorageNode] Failed to persist replicated chunk %s[%d]: %v",
+			req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex, err)
 		return
 	}
 
-	// 2. Verify checksum
-	if !utils.VerifyChecksum(fetchResp.ChunkData, fetchResp.Checksum) {
-		log.Printf("[StorageNode] Checksum mismatch during replication of %s[%d]",
-			req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex)
-		return
-	}
-
-	// 3. Store chunk locally
-	chunkPath := utils.ChunkPath(s.storageDir, req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex)
-	if err := os.WriteFile(chunkPath, fetchResp.ChunkData, 0644); err != nil {
-		log.Printf("[StorageNode] Failed to write replicated chunk: %v", err)
-		return
-	}
-	checksumPath := utils.ChecksumPath(s.storageDir, req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex)
-	if err := os.WriteFile(checksumPath, fetchResp.Checksum, 0644); err != nil {
-		log.Printf("[StorageNode] Failed to write checksum for replicated chunk: %v", err)
-	}
-
-	// 4. Report back to Controller via next heartbeat
+	// Report back to Controller via next heartbeat
 	s.mu.Lock()
 	s.newChunks = append(s.newChunks, req.ChunkInfo)
 	s.mu.Unlock()
 
 	s.numRequests.Add(1)
-	log.Printf("[StorageNode] Replicated chunk %s[%d] from %s",
-		req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex, addr)
+	log.Printf("[StorageNode] Replicated chunk %s[%d] from another replica",
+		req.ChunkInfo.Filename, req.ChunkInfo.ChunkIndex)
 }
 
 /**
