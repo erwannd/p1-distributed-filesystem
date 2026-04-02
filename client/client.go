@@ -463,7 +463,7 @@ func replicaHints(nodes []*messages.NodeInfo, skipIdx int) []*messages.NodeInfo 
 }
 
 /**
- * Wraps data in a protobuf message and sends to primrary storage node.
+ * Wraps data in a protobuf message and sends to primary storage node.
  */
 func sendChunk(data []byte, idx int, destNodes *messages.ChunkMapping) error {
 	primaryNode := destNodes.Nodes[0]

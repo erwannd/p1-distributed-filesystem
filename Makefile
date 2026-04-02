@@ -34,6 +34,9 @@ stop-orion:
 logs-orion:
 	./scripts/logs_orion.sh
 
+clean-orion:
+	./scripts/clean_orion.sh
+
 
 # messages/dfs.pb.go is not cleaned
 # It is committed to git and generated separately via proto/build.sh
