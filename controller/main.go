@@ -30,12 +30,13 @@ func main() {
 	}
 
 	controller := &Controller{
-		nodes:               make(map[uint32]*NodeInfo),
-		files:               make(map[string]*FileMetadata),
-		mu:                  sync.RWMutex{},
-		nextId:              1,
-		pendingReplications: make(map[uint32][]*messages.ReplicateRequest),
-		snapshotPath:        config.Controller.SnapshotPath,
+		nodes:                make(map[uint32]*NodeInfo),
+		files:                make(map[string]*FileMetadata),
+		mu:                   sync.RWMutex{},
+		nextId:               1,
+		pendingReplications:  make(map[uint32][]*messages.ReplicateRequest),
+		inFlightReplications: make(map[string]map[uint32]uint32),
+		snapshotPath:         config.Controller.SnapshotPath,
 	}
 
 	// Load snapshot BEFORE starting listener

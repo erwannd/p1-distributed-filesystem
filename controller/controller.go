@@ -22,12 +22,13 @@ type NodeInfo struct {
 }
 
 type Controller struct {
-	nodes               map[uint32]*NodeInfo                    // maps NodeID -> NodeInfo
-	files               map[string]*FileMetadata                // maps filename -> metadata
-	mu                  sync.RWMutex                            // for concurrent access
-	nextId              uint32                                  // incremental ID
-	pendingReplications map[uint32][]*messages.ReplicateRequest // maps dest NodeID -> replication request
-	snapshotPath        string                                  // where to save .snapshot file
+	nodes                map[uint32]*NodeInfo                    // maps NodeID -> NodeInfo
+	files                map[string]*FileMetadata                // maps filename -> metadata
+	mu                   sync.RWMutex                            // for concurrent access
+	nextId               uint32                                  // incremental ID
+	pendingReplications  map[uint32][]*messages.ReplicateRequest // maps dest NodeID -> replication request
+	inFlightReplications map[string]map[uint32]uint32            // filename -> chunk index -> dest NodeID for unconfirmed replication
+	snapshotPath         string                                  // where to save .snapshot file
 }
 
 type FileMetadata struct {
@@ -122,6 +123,8 @@ func handleRegister(controller *Controller, msg *messages.RegisterRequest, handl
  * Handle heartbeat from storage node + send response back.
  * Update the Controller's in-memory view of the cluster (number of nodes & number of requests).
  * Piggyback re-replication request in the heartbeat.
+ * A chunk only becomes a confirmed replica when the destination node later
+ * reports it in Heartbeat.new_chunks.
  */
 func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *messages.MessageHandler) {
 	// Update storage node freeSpace + lastSeen
@@ -157,6 +160,14 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
 		if !alreadyTracked {
 			chunkMeta.Nodes = append(chunkMeta.Nodes, node)
 			log.Printf("[Controller] Node %d now holds chunk %s[%d]", node.NodeId, chunkInfo.Filename, chunkInfo.ChunkIndex)
+		}
+
+		// Clear in-flight replication only when the expected destination node
+		// confirms it now holds the chunk.
+		if controller.isInFlightReplicationDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId) {
+			controller.clearInFlightReplication(chunkInfo.Filename, chunkInfo.ChunkIndex)
+			log.Printf("[Controller] Replication for %s[%d] confirmed by Node %d",
+				chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
 		}
 	}
 
@@ -545,6 +556,7 @@ func (c *Controller) startFailureDetector() {
 			if time.Since(node.LastSeen) > utils.HeartbeatTimeout {
 				log.Printf("[Controller] Node %d (%s:%d) timed out, marking dead", id, node.Hostname, node.Port)
 				delete(c.nodes, id)
+				c.requeueInflightReplicationsForFailedNode(id)
 				// Need to find all chunks on this failed node -> trigger re-replication
 				// Use hostname:port to find affected chunks
 				c.handleNodeFailure(node.Hostname, node.Port)
@@ -589,7 +601,8 @@ func (c *Controller) handleNodeFailure(hostname string, port int32) {
 }
 
 /**
- * When a node fails, remove it from the chunk's replica list.
+ * When a node fails, remove it from the chunk's confirmed replica list and
+ * queue re-replication if the chunk no longer has enough confirmed holders.
  */
 func (c *Controller) queueReplication(filename string, chunkIndex uint32, failedHost string, failedPort int32) {
 	fileMeta, exists := c.files[filename]
@@ -622,6 +635,13 @@ func (c *Controller) queueReplication(filename string, chunkIndex uint32, failed
 	// Pick a source node (first surviving replica)
 	srcNode := remaining[0]
 
+	// Only one re-replication attempt should be in flight for a chunk at a time.
+	if c.hasInFlightReplication(filename, chunkIndex) {
+		log.Printf("[Controller] Replication for %s[%d] already in flight, waiting for confirmation",
+			filename, chunkIndex)
+		return
+	}
+
 	// Pick a destination node (not already holding this chunk)
 	destNode := c.selectReplicationTarget(chunkMeta)
 	if destNode == nil {
@@ -642,8 +662,90 @@ func (c *Controller) queueReplication(filename string, chunkIndex uint32, failed
 		},
 	)
 
-	// Update metadata — add destNode as new replica
-	chunkMeta.Nodes = append(chunkMeta.Nodes, destNode)
+	c.markInFlightReplication(filename, chunkIndex, destNode.NodeId)
+	log.Printf("[Controller] Queued replication for %s[%d]: src=%s:%d dest=Node %d (%s:%d)",
+		filename, chunkIndex, srcNode.Hostname, srcNode.Port, destNode.NodeId, destNode.Hostname, destNode.Port)
+}
+
+/**
+ * Returns true when a chunk already has an assigned destination node waiting
+ * to confirm re-replication.
+ */
+func (c *Controller) hasInFlightReplication(filename string, chunkIndex uint32) bool {
+	chunks, exists := c.inFlightReplications[filename]
+	if !exists {
+		return false
+	}
+	_, exists = chunks[chunkIndex]
+	return exists
+}
+
+// markInFlightReplication records that a destination node has been assigned but
+// has not yet acknowledged it via Heartbeat.new_chunks.
+func (c *Controller) markInFlightReplication(filename string, chunkIndex uint32, destNodeID uint32) {
+	if _, exists := c.inFlightReplications[filename]; !exists {
+		c.inFlightReplications[filename] = make(map[uint32]uint32)
+	}
+	c.inFlightReplications[filename][chunkIndex] = destNodeID
+}
+
+// isInFlightReplicationDestination checks whether the reporting node is the
+// expected destination for the chunk's unconfirmed replication.
+func (c *Controller) isInFlightReplicationDestination(filename string, chunkIndex uint32, nodeID uint32) bool {
+	chunks, exists := c.inFlightReplications[filename]
+	if !exists {
+		return false
+	}
+	destNodeID, exists := chunks[chunkIndex]
+	return exists && destNodeID == nodeID
+}
+
+// clearInFlightReplication removes a chunk from the set of unconfirmed
+// replications after the destination node reports success.
+func (c *Controller) clearInFlightReplication(filename string, chunkIndex uint32) {
+	chunks, exists := c.inFlightReplications[filename]
+	if !exists {
+		return
+	}
+	delete(chunks, chunkIndex)
+	if len(chunks) == 0 {
+		delete(c.inFlightReplications, filename)
+	}
+}
+
+/**
+ * If a destination node dies before confirming re-replication, clear those
+ * in-flight assignments so they can be queued again.
+ */
+func (c *Controller) requeueInflightReplicationsForFailedNode(nodeID uint32) {
+	type affectedChunk struct {
+		filename   string
+		chunkIndex uint32
+	}
+
+	var affected []affectedChunk
+
+	for filename, chunks := range c.inFlightReplications {
+		for chunkIndex, destNodeID := range chunks {
+			if destNodeID != nodeID {
+				continue
+			}
+			affected = append(affected, affectedChunk{
+				filename:   filename,
+				chunkIndex: chunkIndex,
+			})
+			delete(chunks, chunkIndex)
+		}
+		if len(chunks) == 0 {
+			delete(c.inFlightReplications, filename)
+		}
+	}
+
+	for _, chunk := range affected {
+		log.Printf("[Controller] Unconfirmed replication for %s[%d] lost because destination Node %d failed; re-queueing",
+			chunk.filename, chunk.chunkIndex, nodeID)
+		c.queueReplication(chunk.filename, chunk.chunkIndex, "", 0)
+	}
 }
 
 /**
