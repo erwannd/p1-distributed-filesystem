@@ -33,13 +33,14 @@ for i in $(seq 0 $((NODE_COUNT - 1))); do
     NODE_PORT=$(jq -r ".storage.nodes[$i].port" "$CONFIG")
     NODE_LOG="$LOG_DIR/storage_${NODE_HOST}_${NODE_PORT}.log"
     NODE_PID="$PID_DIR/storage_${NODE_HOST}_${NODE_PORT}.pid"
-    NODE_STORAGE_DIR="$STORAGE_BASE/$NODE_HOST/node_${NODE_PORT}"
 
     echo "[clean_orion.sh] Cleaning $NODE_HOST:$NODE_PORT..."
     ssh "$NODE_HOST" "
+        REMOTE_HOSTNAME=\$(hostname)
+        NODE_STORAGE_DIR='$STORAGE_BASE'/\$REMOTE_HOSTNAME/node_${NODE_PORT}
         rm -f '$NODE_LOG' '$NODE_PID'
-        rm -rf '$NODE_STORAGE_DIR'
-        rmdir '$STORAGE_BASE/$NODE_HOST' 2>/dev/null || true
+        rm -rf \"\$NODE_STORAGE_DIR\"
+        rmdir '$STORAGE_BASE'/\$REMOTE_HOSTNAME 2>/dev/null || true
         rmdir '$LOG_DIR' 2>/dev/null || true
         rmdir '$PID_DIR' 2>/dev/null || true
     "
