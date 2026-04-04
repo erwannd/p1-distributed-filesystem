@@ -96,8 +96,8 @@
 
 # Testing on Orion
 
-## Corruption Detection testing
-Corruption test file is located on `orion01:/bigdata/students/aawihardja/datasets/corruption.txt`
+## Corruption Detection Test
+Corruption test file is located in `orion01` under `/bigdata/students/aawihardja/datasets/corruption.txt`
 
 ```bash
 # SSH to orion01
@@ -113,16 +113,16 @@ make start-orion
 # In a second terminal ssh to orion01 and view the logs
 make logs-orion
 
-# In a third terminal, ssh to orion01, start the client, and store the test file
+# In a third terminal, ssh to orion01, start the Client, and store the test file
 ./bin/client --config config.orion.json --file /bigdata/students/aawihardja/datasets/corruption.txt --chunk-size 1048576
 
-# Find primary replica from controller snapshot
+# Find primary replica from Controller snapshot
 cat /bigdata/students/aawihardja/controller_snapshot.json
 
 # In a fourth terminal, ssh to the replica (e.g. orion06), and change the file content w/o changing the checksum
 printf 'hahahaha\n' > /bigdata/students/storage/$PRIMARY_HOST/node_${PORT}/corruption.txt_chunk_0
 
-# In the client terminal, retrieve the file (this will trigger recovery)
+# In the Client terminal, retrieve the file (this will trigger recovery)
 ./bin/client --config config.orion.json retrieve --file corruption.txt
 
 # Delete the file from the dfs
@@ -130,4 +130,38 @@ printf 'hahahaha\n' > /bigdata/students/storage/$PRIMARY_HOST/node_${PORT}/corru
 
 # Delete retrieved file
 rm /bigdata/students/aawihardja/downloads/corruption.txt
+```
+
+## Re-replication Test
+Replication test file is located in `orion01` under `/bigdata/students/aawihardja/datasets/repl-test.txt`
+
+```bash
+# SSH to orion01
+
+# Start Controller + Storage
+make start-orion
+
+# In a 2nd terminal, ssh to orion01 and watch the logs
+make logs-orion
+
+# In a 3rd terminal, ssh to orion01, start the Client, and store test file
+./bin/client --config config.orion.json store --file /bigdata/students/aawihardja/repl-test.txt
+
+# Find which nodes hold the replica from Controller snapshot (in orion01)
+cat /bigdata/students/aawihardja/controller_snapshot.json
+
+# SSH to one of the replica (e.g. orion06) and stop the storage process
+# kill $(cat /bigdata/students/aawihardja/pids/storage_${HOST}_${PORT}$.pid)
+kill $(cat /bigdata/students/aawihardja/pids/storage_orion09.cs.usfca.edu_10000.pid)
+
+# This will trigger re-replication, wait for about 30 seconds for the Controller to detect failure
+
+# Check the logs in the 2nd terminal, there should be something like:
+[Controller] Node 8 (orion09.cs.usfca.edu:10000) timed out, marking dead
+[Controller] Node orion09.cs.usfca.edu:10000 failed, 1 chunks affected
+[Controller] Chunk repl-test.txt[0] now has 2 replicas, needs re-replication
+[Controller] Queued replication for repl-test.txt[0]: src=orion07.cs.usfca.edu:10000 dest=Node 7 (orion08.cs.usfca.edu:10000)
+
+# On orion01, check the Controller snapshot, there should be a new Storage that now holds the replica.
+# Check if that new node has the chunk + checksum
 ```
