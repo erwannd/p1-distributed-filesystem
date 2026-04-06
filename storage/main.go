@@ -31,7 +31,7 @@ import (
 func main() {
 	// Controller addr must be provided in config file
 	// base storage dir must be provided in config file
-	configPath := flag.String("config", "config.json", "Path to config file")
+	configPath := flag.String("config", "config.orion.json", "Path to config file")
 	port := flag.Int("port", 0, "Override port for this storage node to listen on")
 	flag.Parse()
 

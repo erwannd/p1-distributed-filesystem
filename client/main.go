@@ -8,16 +8,11 @@ import (
 	"github.com/erwannd/dfs/utils"
 )
 
-// ./bin/client --controller localhost:8000 store --file foo.txt --chunk-size 64
-// ./bin/client --controller localhost:8000 retrieve --file foo.txt --output ./downloads
-// ./bin/client --controller localhost:8000 delete --file foo.txt
-// ./bin/client --controller localhost:8000 list
-
 /**
  * Parse args, create Client struct, dispatch to client handler
  */
 func main() {
-	configPath := flag.String("config", "config.json", "Path to config file")
+	configPath := flag.String("config", "config.orion.json", "Path to config file")
 	flag.Parse()
 
 	config, err := utils.LoadConfig(*configPath)

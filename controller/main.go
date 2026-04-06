@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.json", "Path to config file")
+	configPath := flag.String("config", "config.orion.json", "Path to config file")
 	flag.Parse()
 
 	config, err := utils.LoadConfig(*configPath)
