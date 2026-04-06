@@ -85,10 +85,12 @@ func (s *StorageNode) heartbeatLoop(handler *messages.MessageHandler) {
 	for {
 		time.Sleep(5 * time.Second)
 
-		// Pop pending new chunks
+		// Snapshot the current confirmation queue, but do not clear it yet.
+		// These confirmations are only removed after the Controller ACKs the
+		// heartbeat, so a transient connection failure cannot silently drop them.
 		s.mu.Lock()
-		newChunks := s.newChunks
-		s.newChunks = nil // reset
+		sentCount := len(s.newChunks)
+		newChunks := append([]*messages.ChunkInfo(nil), s.newChunks...)
 		s.mu.Unlock()
 
 		heartbeat := &messages.Wrapper{
@@ -104,16 +106,27 @@ func (s *StorageNode) heartbeatLoop(handler *messages.MessageHandler) {
 
 		err := handler.Send(heartbeat)
 		if err != nil {
-			log.Printf("[StorageNode] Heartbeat failed: %v", err)
+			log.Printf("[StorageNode] Heartbeat failed; retaining %d pending chunk confirmation(s): %v", sentCount, err)
 			return // ← signal that connection is dead
 		}
 
 		wrapper, err := handler.Receive()
 		if err != nil {
-			log.Printf("[StorageNode] Lost Controller response: %v", err)
+			log.Printf("[StorageNode] Lost Controller response; retaining %d pending chunk confirmation(s): %v", sentCount, err)
 			return // ← signal that connection is dead
 		}
 		resp := wrapper.Msg.(*messages.Wrapper_HeartbeatResponse).HeartbeatResponse
+
+		// The Controller acknowledged this heartbeat, so the chunk confirmations
+		// included in it can be removed from the front of the queue. Any new
+		// chunks appended while the heartbeat was in flight remain queued.
+		s.mu.Lock()
+		if sentCount > len(s.newChunks) {
+			s.newChunks = nil
+		} else {
+			s.newChunks = s.newChunks[sentCount:]
+		}
+		s.mu.Unlock()
 
 		// Handle replication requests
 		for _, req := range resp.ReplicateRequest {

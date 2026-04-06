@@ -37,7 +37,7 @@ func main() {
 		nextId:               1,
 		pendingReplications:  make(map[uint32][]*messages.ReplicateRequest),
 		inFlightReplications: make(map[string]map[uint32]uint32),
-		pendingStores:        make(map[string]map[uint32]map[uint32]*NodeInfo),
+		pendingStores:        make(map[string]map[uint32]map[string]*NodeInfo),
 		snapshotPath:         config.Controller.SnapshotPath,
 	}
 

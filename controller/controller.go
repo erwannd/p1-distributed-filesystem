@@ -28,7 +28,7 @@ type Controller struct {
 	nextId               uint32                                     // incremental Node ID
 	pendingReplications  map[uint32][]*messages.ReplicateRequest    // maps dest NodeID -> replication request
 	inFlightReplications map[string]map[uint32]uint32               // filename -> chunk index -> dest NodeID for unconfirmed replication
-	pendingStores        map[string]map[uint32]map[uint32]*NodeInfo // filename -> chunk index -> node ID -> intended holder not yet confirmed
+	pendingStores        map[string]map[uint32]map[string]*NodeInfo // filename -> chunk index -> host:port -> intended holder not yet confirmed
 	nextPlacementIndex   int                                        // round-robin cursor for initial chunk placement
 	snapshotPath         string                                     // where to save .snapshot file
 }
@@ -152,7 +152,7 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
 			continue
 		}
 
-		confirmedPendingStore := pending && controller.isPendingStoreDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+		confirmedPendingStore := pending && controller.isPendingStoreDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.Hostname, node.Port)
 		confirmedReplication := controller.isInFlightReplicationDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
 		if !confirmedPendingStore && !confirmedReplication {
 			// Ignore unexpected chunk reports so pending files do not accidentally
@@ -166,9 +166,9 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
 		}
 
 		if confirmedPendingStore {
-			controller.clearPendingStoreDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
-			log.Printf("[Controller] Initial store for %s[%d] confirmed by Node %d",
-				chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+			controller.clearPendingStoreDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.Hostname, node.Port)
+			log.Printf("[Controller] Initial store for %s[%d] confirmed by %s:%d",
+				chunkInfo.Filename, chunkInfo.ChunkIndex, node.Hostname, node.Port)
 		}
 
 		if confirmedReplication {
@@ -219,7 +219,7 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 	// advances the round-robin cursor as each chunk is assigned.
 	destinations := make([]*messages.ChunkMapping, msg.ChunkCount)
 	chunkMetas := make(map[uint32]*ChunkMetadata)
-	pendingStores := make(map[uint32]map[uint32]*NodeInfo)
+	pendingStores := make(map[uint32]map[string]*NodeInfo)
 
 	for i := uint32(0); i < msg.ChunkCount; i++ {
 		chunkSize := chunkSizeForIndex(msg.FileSize, msg.ChunkSize, msg.ChunkCount, i)
@@ -240,14 +240,14 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 		}
 
 		nodeInfos := make([]*messages.NodeInfo, len(nodes))
-		pendingNodes := make(map[uint32]*NodeInfo)
+		pendingNodes := make(map[string]*NodeInfo)
 		for j, n := range nodes {
 			nodeInfos[j] = &messages.NodeInfo{
 				NodeId:   n.NodeId,
 				Hostname: n.Hostname,
 				Port:     n.Port,
 			}
-			pendingNodes[n.NodeId] = n
+			pendingNodes[nodeAddressKey(n.Hostname, n.Port)] = n
 		}
 		destinations[i] = &messages.ChunkMapping{
 			ChunkInfo: &messages.ChunkInfo{
@@ -269,7 +269,7 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 	controller.mu.Lock()
 	_, exists := controller.files[msg.Filename]
 	_, pendingExists := controller.pendingFiles[msg.Filename]
-	if !exists {
+	if !exists && !pendingExists {
 		controller.pendingFiles[msg.Filename] = &FileMetadata{
 			Filename:   msg.Filename,
 			FileSize:   msg.FileSize,
@@ -874,7 +874,7 @@ func (c *Controller) chunkHasHostPort(chunkMeta *ChunkMetadata, hostname string,
  * Checks if a heartbeat from Storage is confirming an initial store assignment (that Controller is waiting on)
  * For the given file chunk, is this node the intended initial storage destination.
  */
-func (c *Controller) isPendingStoreDestination(filename string, chunkIndex uint32, nodeID uint32) bool {
+func (c *Controller) isPendingStoreDestination(filename string, chunkIndex uint32, hostname string, port int32) bool {
 	chunks, exists := c.pendingStores[filename]
 	if !exists {
 		return false
@@ -883,11 +883,11 @@ func (c *Controller) isPendingStoreDestination(filename string, chunkIndex uint3
 	if !exists {
 		return false
 	}
-	_, exists = nodes[nodeID]
+	_, exists = nodes[nodeAddressKey(hostname, port)]
 	return exists
 }
 
-func (c *Controller) clearPendingStoreDestination(filename string, chunkIndex uint32, nodeID uint32) {
+func (c *Controller) clearPendingStoreDestination(filename string, chunkIndex uint32, hostname string, port int32) {
 	chunks, exists := c.pendingStores[filename]
 	if !exists {
 		return
@@ -896,7 +896,7 @@ func (c *Controller) clearPendingStoreDestination(filename string, chunkIndex ui
 	if !exists {
 		return
 	}
-	delete(nodes, nodeID)
+	delete(nodes, nodeAddressKey(hostname, port))
 	if len(nodes) == 0 {
 		delete(chunks, chunkIndex)
 	}
@@ -961,9 +961,9 @@ func (c *Controller) removeFailedNodeFromChunkState(filename string, chunkIndex 
 	if !exists {
 		return
 	}
-	for nodeID, node := range nodes {
+	for key, node := range nodes {
 		if node.Hostname == hostname && node.Port == port {
-			delete(nodes, nodeID)
+			delete(nodes, key)
 		}
 	}
 	if len(nodes) == 0 {
@@ -1037,6 +1037,10 @@ func (c *Controller) buildDeleteTasksLocked(filename string, fileMeta *FileMetad
 	}
 
 	return tasks
+}
+
+func nodeAddressKey(hostname string, port int32) string {
+	return fmt.Sprintf("%s:%d", hostname, port)
 }
 
 /**
