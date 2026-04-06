@@ -32,10 +32,12 @@ func main() {
 	controller := &Controller{
 		nodes:                make(map[uint32]*NodeInfo),
 		files:                make(map[string]*FileMetadata),
+		pendingFiles:         make(map[string]*FileMetadata),
 		mu:                   sync.RWMutex{},
 		nextId:               1,
 		pendingReplications:  make(map[uint32][]*messages.ReplicateRequest),
 		inFlightReplications: make(map[string]map[uint32]uint32),
+		pendingStores:        make(map[string]map[uint32]map[uint32]*NodeInfo),
 		snapshotPath:         config.Controller.SnapshotPath,
 	}
 

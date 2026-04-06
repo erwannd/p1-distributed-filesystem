@@ -240,6 +240,14 @@ func (s *StorageNode) handleStoreChunk(msg *messages.StoreChunkRequest, handler 
 		log.Printf("[StorageNode] Failed to write checksum: %v", err)
 	}
 
+	// Report the successful local write on the next heartbeat so the Controller
+	// can confirm this replica. We do this immediately after the local write
+	// succeeds because this node already has a durable copy, even if the rest of
+	// the pipeline still has work to do.
+	s.mu.Lock()
+	s.newChunks = append(s.newChunks, msg.ChunkInfo)
+	s.mu.Unlock()
+
 	s.numRequests.Add(1)
 	log.Printf("[StorageNode] Stored chunk %s[%d]", msg.ChunkInfo.Filename, msg.ChunkInfo.ChunkIndex)
 

@@ -197,10 +197,17 @@ func (client *Client) store(filename string, chunkSize uint64) error {
 	wg.Wait()
 
 	// Check errors
+	var firstErr error
 	for i, err := range errors {
 		if err != nil {
 			log.Printf("[Client] Failed to send chunk %d: %v", i, err)
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
+	}
+	if firstErr != nil {
+		return fmt.Errorf("store failed: %w", firstErr)
 	}
 
 	return nil

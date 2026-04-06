@@ -22,13 +22,15 @@ type NodeInfo struct {
 }
 
 type Controller struct {
-	nodes                map[uint32]*NodeInfo                    // maps NodeID -> NodeInfo
-	files                map[string]*FileMetadata                // maps filename -> metadata
-	mu                   sync.RWMutex                            // for concurrent access
-	nextId               uint32                                  // incremental ID
-	pendingReplications  map[uint32][]*messages.ReplicateRequest // maps dest NodeID -> replication request
-	inFlightReplications map[string]map[uint32]uint32            // filename -> chunk index -> dest NodeID for unconfirmed replication
-	snapshotPath         string                                  // where to save .snapshot file
+	nodes                map[uint32]*NodeInfo                       // maps NodeID -> NodeInfo
+	files                map[string]*FileMetadata                   // completed files only
+	pendingFiles         map[string]*FileMetadata                   // files still being confirmed
+	mu                   sync.RWMutex                               // for concurrent access
+	nextId               uint32                                     // incremental ID
+	pendingReplications  map[uint32][]*messages.ReplicateRequest    // maps dest NodeID -> replication request
+	inFlightReplications map[string]map[uint32]uint32               // filename -> chunk index -> dest NodeID for unconfirmed replication
+	pendingStores        map[string]map[uint32]map[uint32]*NodeInfo // filename -> chunk index -> node ID -> intended holder not yet confirmed
+	snapshotPath         string                                     // where to save .snapshot file
 }
 
 type FileMetadata struct {
@@ -141,7 +143,7 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
 
 	// Handle new chunks reported via piggyback
 	for _, chunkInfo := range msg.NewChunks {
-		fileMeta, exists := controller.files[chunkInfo.Filename]
+		fileMeta, pending, exists := controller.lookupFileMetadata(chunkInfo.Filename)
 		if !exists {
 			continue
 		}
@@ -149,25 +151,41 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
 		if !exists {
 			continue
 		}
-		// Add this node to replica list if not already there
-		alreadyTracked := false
-		for _, n := range chunkMeta.Nodes {
-			if n.Hostname == node.Hostname && n.Port == node.Port {
-				alreadyTracked = true
-				break
-			}
+
+		confirmedPendingStore := pending && controller.isPendingStoreDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+		confirmedReplication := controller.isInFlightReplicationDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+		if !confirmedPendingStore && !confirmedReplication {
+			// Ignore unexpected chunk reports so pending files do not accidentally
+			// become visible without an original assignment or re-replication.
+			continue
 		}
-		if !alreadyTracked {
+
+		if !controller.chunkHasNode(chunkMeta, node) {
 			chunkMeta.Nodes = append(chunkMeta.Nodes, node)
 			log.Printf("[Controller] Node %d now holds chunk %s[%d]", node.NodeId, chunkInfo.Filename, chunkInfo.ChunkIndex)
 		}
 
-		// Clear in-flight replication only when the expected destination node
-		// confirms it now holds the chunk.
-		if controller.isInFlightReplicationDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId) {
+		if confirmedPendingStore {
+			controller.clearPendingStoreDestination(chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+			log.Printf("[Controller] Initial store for %s[%d] confirmed by Node %d",
+				chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+		}
+
+		if confirmedReplication {
 			controller.clearInFlightReplication(chunkInfo.Filename, chunkInfo.ChunkIndex)
 			log.Printf("[Controller] Replication for %s[%d] confirmed by Node %d",
 				chunkInfo.Filename, chunkInfo.ChunkIndex, node.NodeId)
+		}
+
+		if pending {
+			if controller.isFileComplete(fileMeta) {
+				controller.promotePendingFile(chunkInfo.Filename)
+				log.Printf("[Controller] File %s fully confirmed and now available", chunkInfo.Filename)
+			} else {
+				controller.maybeQueueReplication(chunkInfo.Filename, chunkInfo.ChunkIndex)
+			}
+		} else {
+			controller.maybeQueueReplication(chunkInfo.Filename, chunkInfo.ChunkIndex)
 		}
 	}
 
@@ -200,9 +218,10 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 	// Build destinations first (outside lock — selectNodes has its own RLock)
 	destinations := make([]*messages.ChunkMapping, msg.ChunkCount)
 	chunkMetas := make(map[uint32]*ChunkMetadata)
+	pendingStores := make(map[uint32]map[uint32]*NodeInfo)
 
 	for i := uint32(0); i < msg.ChunkCount; i++ {
-		nodes, err := controller.selectNodes(3)
+		nodes, err := controller.selectNodes(int(utils.ReplicationFactor))
 		if err != nil {
 			resp := &messages.Wrapper{
 				Msg: &messages.Wrapper_StoreResponse{
@@ -219,12 +238,14 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 		}
 
 		nodeInfos := make([]*messages.NodeInfo, len(nodes))
+		pendingNodes := make(map[uint32]*NodeInfo)
 		for j, n := range nodes {
 			nodeInfos[j] = &messages.NodeInfo{
 				NodeId:   n.NodeId,
 				Hostname: n.Hostname,
 				Port:     n.Port,
 			}
+			pendingNodes[n.NodeId] = n
 		}
 		destinations[i] = &messages.ChunkMapping{
 			ChunkInfo: &messages.ChunkInfo{
@@ -235,30 +256,30 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 		}
 		chunkMetas[i] = &ChunkMetadata{
 			ChunkIndex: i,
-			Nodes:      nodes,
+			Nodes:      []*NodeInfo{},
 		}
+		pendingStores[i] = pendingNodes
 	}
 
-	// Atomic check + store under write lock
+	// Atomic check + store under write lock.
+	// The file remains pending until the assigned nodes report successful local
+	// persistence via Heartbeat.new_chunks.
 	controller.mu.Lock()
 	_, exists := controller.files[msg.Filename]
+	_, pendingExists := controller.pendingFiles[msg.Filename]
 	if !exists {
-		controller.files[msg.Filename] = &FileMetadata{
+		controller.pendingFiles[msg.Filename] = &FileMetadata{
 			Filename:   msg.Filename,
 			FileSize:   msg.FileSize,
 			ChunkSize:  msg.ChunkSize,
 			ChunkCount: msg.ChunkCount,
 			Chunks:     chunkMetas,
 		}
+		controller.pendingStores[msg.Filename] = pendingStores
 	}
 	controller.mu.Unlock()
 
-	// Save snapshot after store
-	if err := controller.saveSnapshot(); err != nil {
-		log.Printf("[Controller] Failed to save snapshot after store: %v", err)
-	}
-
-	if exists {
+	if exists || pendingExists {
 		resp := &messages.Wrapper{
 			Msg: &messages.Wrapper_StoreResponse{
 				StoreResponse: &messages.StoreResponse{
@@ -299,6 +320,20 @@ func handleRetrieveRequest(controller *Controller, msg *messages.RetrieveRequest
 	// Check if file exists
 	fileMeta, exists := controller.files[msg.Filename]
 	if !exists {
+		if _, pending := controller.pendingFiles[msg.Filename]; pending {
+			resp := &messages.Wrapper{
+				Msg: &messages.Wrapper_RetrieveResponse{
+					RetrieveResponse: &messages.RetrieveResponse{
+						Ok:    false,
+						Error: fmt.Sprintf("file %s is still being stored", msg.Filename),
+					},
+				},
+			}
+			if err := handler.Send(resp); err != nil {
+				log.Printf("[Controller] Failed to send pending RetrieveResponse: %v", err)
+			}
+			return
+		}
 		resp := &messages.Wrapper{
 			Msg: &messages.Wrapper_RetrieveResponse{
 				RetrieveResponse: &messages.RetrieveResponse{
@@ -361,7 +396,7 @@ func handleChunkLocationsRequest(controller *Controller, msg *messages.ChunkLoca
 	controller.mu.RLock()
 	defer controller.mu.RUnlock()
 
-	fileMeta, exists := controller.files[msg.ChunkInfo.Filename]
+	fileMeta, _, exists := controller.lookupFileMetadata(msg.ChunkInfo.Filename)
 	if !exists {
 		handler.Send(&messages.Wrapper{
 			Msg: &messages.Wrapper_ChunkLocationsResponse{
@@ -424,12 +459,11 @@ func handleChunkLocationsRequest(controller *Controller, msg *messages.ChunkLoca
  *	4. Send response to client (failure or success)
  */
 func handleDeleteRequest(controller *Controller, msg *messages.DeleteRequest, handler *messages.MessageHandler) {
-	// 1. Check if file exists
+	// 1. Check if file exists and gather every node that might hold a local copy.
 	controller.mu.Lock()
-	fileMeta, exists := controller.files[msg.Filename]
-	controller.mu.Unlock()
-
+	fileMeta, pending, exists := controller.lookupFileMetadata(msg.Filename)
 	if !exists {
+		controller.mu.Unlock()
 		resp := &messages.Wrapper{
 			Msg: &messages.Wrapper_RetrieveResponse{
 				RetrieveResponse: &messages.RetrieveResponse{
@@ -444,13 +478,15 @@ func handleDeleteRequest(controller *Controller, msg *messages.DeleteRequest, ha
 		return
 	}
 
-	// 2. Delete chunks from all storage nodes
-	controller.deleteFile(msg.Filename, fileMeta)
-
-	// 3. Remove metadata only after chunks are deleted
-	controller.mu.Lock()
+	deleteTasks := controller.buildDeleteTasksLocked(msg.Filename, fileMeta, pending)
 	delete(controller.files, msg.Filename)
+	delete(controller.pendingFiles, msg.Filename)
+	delete(controller.pendingStores, msg.Filename)
+	delete(controller.inFlightReplications, msg.Filename)
 	controller.mu.Unlock()
+
+	// 2. Delete chunks from all known storage nodes.
+	controller.deleteTasks(msg.Filename, deleteTasks)
 
 	// 4. Save snapshot after deletion
 	if err := controller.saveSnapshot(); err != nil {
@@ -573,6 +609,7 @@ func (c *Controller) handleNodeFailure(hostname string, port int32) {
 	type affectedChunk struct {
 		filename   string
 		chunkIndex uint32
+		isPending  bool
 	}
 
 	var affected []affectedChunk
@@ -584,6 +621,7 @@ func (c *Controller) handleNodeFailure(hostname string, port int32) {
 					affected = append(affected, affectedChunk{
 						filename:   filename,
 						chunkIndex: chunkMeta.ChunkIndex,
+						isPending:  false,
 					})
 					break
 				}
@@ -591,59 +629,66 @@ func (c *Controller) handleNodeFailure(hostname string, port int32) {
 		}
 	}
 
+	for filename, fileMeta := range c.pendingFiles {
+		for _, chunkMeta := range fileMeta.Chunks {
+			if c.chunkHasHostPort(chunkMeta, hostname, port) || c.pendingStoreContainsHostPort(filename, chunkMeta.ChunkIndex, hostname, port) {
+				affected = append(affected, affectedChunk{
+					filename:   filename,
+					chunkIndex: chunkMeta.ChunkIndex,
+					isPending:  true,
+				})
+			}
+		}
+	}
+
 	log.Printf("[Controller] Node %s:%d failed, %d chunks affected",
 		hostname, port, len(affected))
 
-	// Queue re-replication for each affected chunk
+	// Queue re-replication for each affected chunk. Pending files use the same
+	// healing path, but only if they still have at least one confirmed replica.
 	for _, chunk := range affected {
-		c.queueReplication(chunk.filename, chunk.chunkIndex, hostname, port)
+		c.removeFailedNodeFromChunkState(chunk.filename, chunk.chunkIndex, hostname, port)
+		c.maybeQueueReplication(chunk.filename, chunk.chunkIndex)
 	}
 }
 
 /**
- * When a node fails, remove it from the chunk's confirmed replica list and
- * queue re-replication if the chunk no longer has enough confirmed holders.
+ * Queue a re-replication request if a chunk has at least one confirmed copy
+ * but not enough total confirmed/planned replicas to reach the target.
  */
-func (c *Controller) queueReplication(filename string, chunkIndex uint32, failedHost string, failedPort int32) {
-	fileMeta, exists := c.files[filename]
+func (c *Controller) maybeQueueReplication(filename string, chunkIndex uint32) {
+	fileMeta, pending, exists := c.lookupFileMetadata(filename)
 	if !exists {
 		return
 	}
+
 	chunkMeta, exists := fileMeta.Chunks[chunkIndex]
 	if !exists {
 		return
 	}
 
-	// Remove failed node from replica list
-	remaining := make([]*NodeInfo, 0)
-	for _, n := range chunkMeta.Nodes {
-		if n.Hostname != failedHost || n.Port != failedPort {
-			remaining = append(remaining, n)
-		}
-	}
-	chunkMeta.Nodes = remaining
-
-	log.Printf("[Controller] Chunk %s[%d] now has %d replicas, needs re-replication",
-		filename, chunkIndex, len(remaining))
-
-	// Need at least one surviving replica to replicate FROM
-	if len(remaining) == 0 {
-		log.Printf("[Controller] WARNING: chunk %s[%d] has NO replicas — data lost!", filename, chunkIndex)
-		return
-	}
-
-	// Pick a source node (first surviving replica)
-	srcNode := remaining[0]
-
-	// Only one re-replication attempt should be in flight for a chunk at a time.
-	if c.hasInFlightReplication(filename, chunkIndex) {
-		log.Printf("[Controller] Replication for %s[%d] already in flight, waiting for confirmation",
+	confirmedCount := len(chunkMeta.Nodes)
+	if confirmedCount == 0 {
+		log.Printf("[Controller] Chunk %s[%d] has no confirmed replicas; cannot heal automatically",
 			filename, chunkIndex)
 		return
 	}
 
-	// Pick a destination node (not already holding this chunk)
-	destNode := c.selectReplicationTarget(chunkMeta)
+	// Only one re-replication attempt should be in flight for a chunk at a time.
+	if c.hasInFlightReplication(filename, chunkIndex) {
+		return
+	}
+
+	plannedCount := confirmedCount + c.pendingStoreCount(filename, chunkIndex)
+	if plannedCount >= int(utils.ReplicationFactor) {
+		return
+	}
+
+	// Pick a source node (first surviving confirmed replica)
+	srcNode := chunkMeta.Nodes[0]
+
+	// Pick a destination node that is not already confirmed or pending.
+	destNode := c.selectReplicationTarget(filename, chunkMeta, pending)
 	if destNode == nil {
 		log.Printf("[Controller] No available node to replicate chunk %s[%d] to", filename, chunkIndex)
 		return
@@ -744,19 +789,26 @@ func (c *Controller) requeueInflightReplicationsForFailedNode(nodeID uint32) {
 	for _, chunk := range affected {
 		log.Printf("[Controller] Unconfirmed replication for %s[%d] lost because destination Node %d failed; re-queueing",
 			chunk.filename, chunk.chunkIndex, nodeID)
-		c.queueReplication(chunk.filename, chunk.chunkIndex, "", 0)
+		c.maybeQueueReplication(chunk.filename, chunk.chunkIndex)
 	}
 }
 
 /**
  * Pick a storage node to re-replicate chunk onto.
  */
-func (c *Controller) selectReplicationTarget(chunkMeta *ChunkMetadata) *NodeInfo {
+func (c *Controller) selectReplicationTarget(filename string, chunkMeta *ChunkMetadata, pending bool) *NodeInfo {
 	// Build set of nodes already holding this chunk
 	alreadyHas := make(map[string]bool)
 	for _, n := range chunkMeta.Nodes {
 		key := fmt.Sprintf("%s:%d", n.Hostname, n.Port)
 		alreadyHas[key] = true
+	}
+	if pending {
+		pendingNodes := c.pendingStores[filename][chunkMeta.ChunkIndex]
+		for _, n := range pendingNodes {
+			key := fmt.Sprintf("%s:%d", n.Hostname, n.Port)
+			alreadyHas[key] = true
+		}
 	}
 
 	// Pick a node not already holding this chunk
@@ -770,29 +822,219 @@ func (c *Controller) selectReplicationTarget(chunkMeta *ChunkMetadata) *NodeInfo
 }
 
 /**
- * Delete chunks from all nodes, including replicas.
- * Two-level parallelism
+ * Delete chunks from all known nodes that may hold them.
  */
-func (c *Controller) deleteFile(filename string, fileMeta *FileMetadata) {
+func (c *Controller) deleteTasks(filename string, tasks []deleteTask) {
 	var wg sync.WaitGroup
 
-	// Lv 1: Iterate chunks
-	for i := uint32(0); i < fileMeta.ChunkCount; i++ {
-		chunkMeta := fileMeta.Chunks[i]
-
-		// Lv 2: Delete from all replicas in parallel
-		for _, node := range chunkMeta.Nodes {
-			wg.Add(1)
-			go func(n *NodeInfo, chunkIndex uint32) {
-				defer wg.Done()
-				if err := sendDeleteChunk(n, filename, chunkIndex); err != nil {
-					log.Printf("[Controller] Failed to delete chunk %d from Node %d: %v",
-						chunkIndex, n.NodeId, err)
-				}
-			}(node, i)
-		}
+	for _, task := range tasks {
+		wg.Add(1)
+		go func(t deleteTask) {
+			defer wg.Done()
+			if err := sendDeleteChunk(t.node, filename, t.chunkIndex); err != nil {
+				log.Printf("[Controller] Failed to delete chunk %d from Node %d: %v",
+					t.chunkIndex, t.node.NodeId, err)
+			}
+		}(task)
 	}
 	wg.Wait()
+}
+
+type deleteTask struct {
+	node       *NodeInfo
+	chunkIndex uint32
+}
+
+func (c *Controller) lookupFileMetadata(filename string) (*FileMetadata, bool, bool) {
+	if meta, exists := c.files[filename]; exists {
+		return meta, false, true
+	}
+	if meta, exists := c.pendingFiles[filename]; exists {
+		return meta, true, true
+	}
+	return nil, false, false
+}
+
+func (c *Controller) chunkHasNode(chunkMeta *ChunkMetadata, node *NodeInfo) bool {
+	return c.chunkHasHostPort(chunkMeta, node.Hostname, node.Port)
+}
+
+func (c *Controller) chunkHasHostPort(chunkMeta *ChunkMetadata, hostname string, port int32) bool {
+	for _, n := range chunkMeta.Nodes {
+		if n.Hostname == hostname && n.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * Checks if a heartbeat from Storage is confirming an initial store assignment (that Controller is waiting on)
+ * For the given file chunk, is this node the intended initial storage destination.
+ */
+func (c *Controller) isPendingStoreDestination(filename string, chunkIndex uint32, nodeID uint32) bool {
+	chunks, exists := c.pendingStores[filename]
+	if !exists {
+		return false
+	}
+	nodes, exists := chunks[chunkIndex]
+	if !exists {
+		return false
+	}
+	_, exists = nodes[nodeID]
+	return exists
+}
+
+func (c *Controller) clearPendingStoreDestination(filename string, chunkIndex uint32, nodeID uint32) {
+	chunks, exists := c.pendingStores[filename]
+	if !exists {
+		return
+	}
+	nodes, exists := chunks[chunkIndex]
+	if !exists {
+		return
+	}
+	delete(nodes, nodeID)
+	if len(nodes) == 0 {
+		delete(chunks, chunkIndex)
+	}
+	if len(chunks) == 0 {
+		delete(c.pendingStores, filename)
+	}
+}
+
+func (c *Controller) pendingStoreCount(filename string, chunkIndex uint32) int {
+	chunks, exists := c.pendingStores[filename]
+	if !exists {
+		return 0
+	}
+	return len(chunks[chunkIndex])
+}
+
+func (c *Controller) pendingStoreContainsHostPort(filename string, chunkIndex uint32, hostname string, port int32) bool {
+	chunks, exists := c.pendingStores[filename]
+	if !exists {
+		return false
+	}
+	nodes, exists := chunks[chunkIndex]
+	if !exists {
+		return false
+	}
+	for _, node := range nodes {
+		if node.Hostname == hostname && node.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) removeFailedNodeFromChunkState(filename string, chunkIndex uint32, hostname string, port int32) {
+	fileMeta, pending, exists := c.lookupFileMetadata(filename)
+	if !exists {
+		return
+	}
+	chunkMeta, exists := fileMeta.Chunks[chunkIndex]
+	if !exists {
+		return
+	}
+
+	remaining := make([]*NodeInfo, 0, len(chunkMeta.Nodes))
+	for _, node := range chunkMeta.Nodes {
+		if node.Hostname == hostname && node.Port == port {
+			continue
+		}
+		remaining = append(remaining, node)
+	}
+	chunkMeta.Nodes = remaining
+
+	if !pending {
+		return
+	}
+
+	chunks, exists := c.pendingStores[filename]
+	if !exists {
+		return
+	}
+	nodes, exists := chunks[chunkIndex]
+	if !exists {
+		return
+	}
+	for nodeID, node := range nodes {
+		if node.Hostname == hostname && node.Port == port {
+			delete(nodes, nodeID)
+		}
+	}
+	if len(nodes) == 0 {
+		delete(chunks, chunkIndex)
+	}
+	if len(chunks) == 0 {
+		delete(c.pendingStores, filename)
+	}
+}
+
+func (c *Controller) isFileComplete(meta *FileMetadata) bool {
+	for chunkIndex := uint32(0); chunkIndex < meta.ChunkCount; chunkIndex++ {
+		chunkMeta, exists := meta.Chunks[chunkIndex]
+		if !exists || len(chunkMeta.Nodes) < int(utils.ReplicationFactor) {
+			return false
+		}
+	}
+	return true
+}
+
+// promotePendingFile makes an in-progress file visible for normal retrieve/list
+// operations once every chunk has enough confirmed replicas.
+func (c *Controller) promotePendingFile(filename string) {
+	fileMeta, exists := c.pendingFiles[filename]
+	if !exists {
+		return
+	}
+	c.files[filename] = fileMeta
+	delete(c.pendingFiles, filename)
+	delete(c.pendingStores, filename)
+}
+
+func (c *Controller) buildDeleteTasksLocked(filename string, fileMeta *FileMetadata, pending bool) []deleteTask {
+	tasks := make([]deleteTask, 0)
+
+	for chunkIndex := uint32(0); chunkIndex < fileMeta.ChunkCount; chunkIndex++ {
+		chunkMeta := fileMeta.Chunks[chunkIndex]
+		targets := make(map[string]*NodeInfo)
+
+		for _, node := range chunkMeta.Nodes {
+			key := fmt.Sprintf("%s:%d", node.Hostname, node.Port)
+			targets[key] = node
+		}
+
+		if pending {
+			if chunks, exists := c.pendingStores[filename]; exists {
+				if nodes, exists := chunks[chunkIndex]; exists {
+					for _, node := range nodes {
+						key := fmt.Sprintf("%s:%d", node.Hostname, node.Port)
+						targets[key] = node
+					}
+				}
+			}
+		}
+
+		if inFlight, exists := c.inFlightReplications[filename]; exists {
+			if destNodeID, exists := inFlight[chunkIndex]; exists {
+				if node, exists := c.nodes[destNodeID]; exists {
+					key := fmt.Sprintf("%s:%d", node.Hostname, node.Port)
+					targets[key] = node
+				}
+			}
+		}
+
+		for _, node := range targets {
+			tasks = append(tasks, deleteTask{
+				node:       node,
+				chunkIndex: chunkIndex,
+			})
+		}
+	}
+
+	return tasks
 }
 
 /**
