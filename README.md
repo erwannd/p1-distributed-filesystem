@@ -27,6 +27,15 @@
     ./bin/client --config config.orion.json delete --file test.txt
     ```
 
+6. Stop the Controller & Storage nodes
+    ```bash
+    # Stop all components
+    make stop-orion
+
+    # Stop all components and clean the directory
+    make clean-orion
+    ```
+
 
 # Design Flow
 
