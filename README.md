@@ -1,27 +1,32 @@
-# How to test
-- Steps to test logging using scripts 
+# How to run
+1. SSH to `orion01`
+2. Pull the repo if you haven't and `cd` into the project directory
+3. Start the Controller and Storage nodes (this will build binaries)
     ```bash
-    # Start Controller & Storage Nodes
-    ./scripts/start.sh
-
-    # If you want to log to the terminal use
-    ./scripts/logs.sh
-
-    # Stop the application
-    ./scripts/stop.sh
+    make start-orion
     ```
-
-- Client
+4. On a different terminal, you can the watch the logs
     ```bash
+    make logs-orion
+    ```
+5. On another terminal, you can start the Client
+    ```bash
+    # List files
+    ./bin/client --config config.orion.json list
+
+    # List nodes
+    ./bin/client --config config.orion.json nodes
+
     # Store file
-    ./bin/client --controller <host:port> store --file <filepath>
+    ./bin/client --config config.orion.json store --file test.txt
 
     # Retrieve file
-    ./bin/client --controller <host:port> retrieve --file <filename> --output <output_dir>
+    ./bin/client --config config.orion.json retrieve --file test.txt
 
-    # List file
-    # TBD
+    # Delete file
+    ./bin/client --config config.orion.json delete --file test.txt
     ```
+
 
 # Design Flow
 
