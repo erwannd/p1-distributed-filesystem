@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"sort"
 	"sync"
 	"time"
 
@@ -26,10 +25,11 @@ type Controller struct {
 	files                map[string]*FileMetadata                   // completed files only
 	pendingFiles         map[string]*FileMetadata                   // files still being confirmed
 	mu                   sync.RWMutex                               // for concurrent access
-	nextId               uint32                                     // incremental ID
+	nextId               uint32                                     // incremental Node ID
 	pendingReplications  map[uint32][]*messages.ReplicateRequest    // maps dest NodeID -> replication request
 	inFlightReplications map[string]map[uint32]uint32               // filename -> chunk index -> dest NodeID for unconfirmed replication
 	pendingStores        map[string]map[uint32]map[uint32]*NodeInfo // filename -> chunk index -> node ID -> intended holder not yet confirmed
+	nextPlacementIndex   int                                        // round-robin cursor for initial chunk placement
 	snapshotPath         string                                     // where to save .snapshot file
 }
 
@@ -215,19 +215,21 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
  * Handle Client's store request.
  */
 func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, handler *messages.MessageHandler) {
-	// Build destinations first (outside lock — selectNodes has its own RLock)
+	// Build destinations first; selectNodes manages its own locking because it
+	// advances the round-robin cursor as each chunk is assigned.
 	destinations := make([]*messages.ChunkMapping, msg.ChunkCount)
 	chunkMetas := make(map[uint32]*ChunkMetadata)
 	pendingStores := make(map[uint32]map[uint32]*NodeInfo)
 
 	for i := uint32(0); i < msg.ChunkCount; i++ {
-		nodes, err := controller.selectNodes(int(utils.ReplicationFactor))
+		chunkSize := chunkSizeForIndex(msg.FileSize, msg.ChunkSize, msg.ChunkCount, i)
+		nodes, err := controller.selectNodes(int(utils.ReplicationFactor), chunkSize)
 		if err != nil {
 			resp := &messages.Wrapper{
 				Msg: &messages.Wrapper_StoreResponse{
 					StoreResponse: &messages.StoreResponse{
 						Ok:    false,
-						Error: "not enough storage nodes for replication",
+						Error: fmt.Sprintf("not enough storage nodes with %d bytes free for replication", chunkSize),
 					},
 				},
 			}
@@ -1076,25 +1078,63 @@ func sendDeleteChunk(node *NodeInfo, filename string, chunkIndex uint32) error {
 
 /**
  * Replica placement algorithm.
- * Simple approach: pick nodes by free space (descending).
+ * Simple approach: pick nodes in round-robin order while excluding nodes that
+ * cannot fit the chunk being assigned.
  */
-func (c *Controller) selectNodes(count int) ([]*NodeInfo, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+func (c *Controller) selectNodes(count int, requiredBytes uint64) ([]*NodeInfo, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	if len(c.nodes) < count {
-		return nil, fmt.Errorf("not enough nodes: need %d, have %d", count, len(c.nodes))
-	}
-
-	// Sort nodes by free space descending, pick top N
-	nodes := make([]*NodeInfo, 0, len(c.nodes))
+	eligible := make([]*NodeInfo, 0, len(c.nodes))
 	for _, n := range c.nodes {
-		nodes = append(nodes, n)
+		if n.FreeSpace >= requiredBytes {
+			eligible = append(eligible, n)
+		}
 	}
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].FreeSpace > nodes[j].FreeSpace
-	})
+	if len(eligible) < count {
+		return nil, fmt.Errorf("not enough eligible nodes: need %d, have %d", count, len(eligible))
+	}
 
-	selected := nodes[:count]
+	// Build a stable order so round-robin behavior is deterministic across runs.
+	// We rotate through this ordered slice using nextPlacementIndex.
+	for i := 0; i < len(eligible)-1; i++ {
+		for j := i + 1; j < len(eligible); j++ {
+			if eligible[j].NodeId < eligible[i].NodeId {
+				eligible[i], eligible[j] = eligible[j], eligible[i]
+			}
+		}
+	}
+
+	selected := make([]*NodeInfo, 0, count)
+	start := 0
+	if len(eligible) > 0 {
+		start = c.nextPlacementIndex % len(eligible)
+	}
+	for i := 0; i < count; i++ {
+		idx := (start + i) % len(eligible)
+		selected = append(selected, eligible[idx])
+	}
+
+	// Advance the cursor once per chunk assignment so the next chunk starts at
+	// the next eligible node in the stable ordering.
+	c.nextPlacementIndex = (start + 1) % len(eligible)
 	return selected, nil
+}
+
+// chunkSizeForIndex returns the exact number of bytes that chunk i will carry.
+// All chunks except the last use the requested chunk size; the last chunk may be
+// smaller when the file size is not an exact multiple.
+func chunkSizeForIndex(fileSize uint64, chunkSize uint64, chunkCount uint32, index uint32) uint64 {
+	if chunkCount == 0 {
+		return 0
+	}
+	if index < chunkCount-1 {
+		return chunkSize
+	}
+
+	offset := uint64(index) * chunkSize
+	if offset >= fileSize {
+		return 0
+	}
+	return fileSize - offset
 }
