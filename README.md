@@ -1,3 +1,12 @@
+# About
+This project is an implementation of a Hadoop-style distributed system with Controller, Storage, and Client as components.
+
+# Table of Contents
+- [How to run the system](#how-to-run)
+- [Flow diagrams](#design-flow)
+- [Some test cases](#testing-on-orion)
+- [Retrospective questions](#retrospective-questions)
+
 # How to run
 1. SSH to `orion01`
 2. Pull the repo if you haven't and `cd` into the project directory
@@ -36,8 +45,67 @@
     make clean-orion
     ```
 
+# Retrospective Questions
+1. I used 8 extra days to complete the project.
+
+2. I could maybe: 
+    - Use gRPC for communication so there is less manual connection handling and message-type checking.
+    - Persisting the Controller state is a recurring issue, so something like a small metadata store can make recovery/restart durable.
+
+3. Areas for improvements:
+    - Controller prevents conflicts at the metadata level, but the Storage node itself doesn't protect same-chunk file access. I could add synchronization per chunk to prevent concurrent retrieve and delete.
+    - Client retrieves file by buffering chunks in memory. It could write the chunks directly to the output file, given that the Client knows the file size and chunk size. This is scalable to large files.
+    - Controller snapshot can be enhanced by including pending files and occasionally cleaning up stale files.
+
+4. I would say around 20-30 hours. Testing took the most time. Handling edge cases (e.g. re-replication when a node failed) and defining the protobuf messages come in second place.
+
+5. I learned that keeping state consistent in a distributed system is a difficult problem. Nothing, I think the project is good, though the project specification could be made more detailed.
 
 # Design Flow
+
+## Store flow
+<img src="./diagrams/store-flow.png">
+
+1. Client sends `StoreRequest` to the Controller with: filename, chunk size, chunk count, file size.
+2. Controller checks if the file already exists in either: completed files or pending files (currently being stored).
+3. If the file is new, the Controller does the following:
+    - picks replica destinations for each chunk
+    - records the file in `pendingFiles` map
+    - records the intended chunk holders in `pendingStores` map
+    - returns `StoreResponse` to the Client with the <chunk to node> mappings
+4. Client splits the file into chunks and sends each chunk in parallel to the first node in that chunk’s pipeline.
+5. The first storage node then:
+    - verifies the checksum
+    - persists the chunk and checksum sidecar on disk
+    - records the chunk in `newChunks` for heartbeat confirmation to Controller
+    - forwards the same chunk to the next node in the pipeline
+6. Each downstream replica does the same thing until the last replica has stored the chunk.
+7. Storage acknowledgements (ACK) travels back up the pipeline to the first replica, which then replies to the client.
+8. Storage nodes report successful local writes to the Controller through the `new_chunks` field in its heartbeat.
+9. Controller confirms those replicas and moves the file from pending status to completed files. This happens only after the chunk has enough confirmed replicas.
+
+## Retrieve flow
+
+1. Client sends `RetrieveRequest` to Controller with the filename.
+2. Controller checks if the file is completed or is still pending.
+3. If the file is complete, Controller returns `RetrieveResponse` with <chunk to node> mappings for the requested file. Each chunk's replica list is included for the Client to forward to the Storage.
+4. Client fetches chunks in parallel. For each chunk, it contacts one storage node first and includes the other replica nodes.
+5. The contacted storage then:
+    - verifies its local chunk against the checksum sidecar
+    - if valid, returns the chunk immediately
+    - if corrupted or missing, it tries to repair from replica nodes
+    - repairs its local copy, then returns the chunk
+6. Client stores each fetched chunk in memory at the correct chunk index.
+7. After all chunk fetches succeed, the client reassembles the file and writes the final output.
+
+## Delete flow
+
+1. Client sends `DeleteRequest` to the Controller with the filename.
+2. Controller checks if the file exists in either completed or pending files.
+3. If the file exists, the Controller finds all nodes that may hold the file’s chunks.
+4. Controller issues a `DeleteChunkRequest` to relevant nodes.
+5. Each node deletes the chunk and its checksum.
+6. Controller returns success to the client
 
 ## Replication flow
 <img src="./diagrams/replication-flow.png">
@@ -52,16 +120,18 @@
     - At that point, the Controller:
         - removes the failed node from the live node set
         - re-queues any unconfirmed replications that were assigned to that failed node as a destination
-        - handles the failed node’s confirmed chunk replicas by scheduling re-replication
+        - handles the failed node’s confirmed chunk replicas by scheduling re-replication for both completed files and pending files
 3. To handle node failure, the Controller:
-    - finds all chunks whose confirmed replica list included the failed node
+    - finds all affected chunks in both:
+        - completed files whose confirmed replica list included the failed node
+        - pending files whose confirmed replica list or pending store assignments included the failed node
     - for each affected chunk, queues replication:
         - removes the failed node from the chunk’s confirmed replica list
         - checks whether the chunk already has an assigned-but-unconfirmed replication in `inFlightReplications`
         - if so, it does not issue another replication request
         - otherwise, it:
             - picks a source node from the surviving confirmed replicas
-            - picks a destination node that does not already hold a confirmed copy of the chunk
+            - picks a destination node that doesn't already hold a confirmed copy OR have an intended pending copy of the chunk
             - creates a `ReplicateRequest`
             - adds that request to `pendingReplications`
             - records the chunk in `inFlightReplications`
@@ -119,22 +189,20 @@ Corruption test file is located in `orion01` under `/bigdata/students/aawihardja
 # Cleanup
 make clean-orion
 
-# Stop stale process
-make stop-orion
-
 make start-orion
 
 # In a second terminal ssh to orion01 and view the logs
 make logs-orion
 
 # In a third terminal, ssh to orion01, start the Client, and store the test file
-./bin/client --config config.orion.json --file /bigdata/students/aawihardja/datasets/corruption.txt --chunk-size 1048576
+./bin/client --config config.orion.json store --file /bigdata/students/aawihardja/datasets/corruption.txt --chunk-size 1048576
 
 # Find primary replica from Controller snapshot
 cat /bigdata/students/aawihardja/controller_snapshot.json
 
-# In a fourth terminal, ssh to the replica (e.g. orion06), and change the file content w/o changing the checksum
-printf 'hahahaha\n' > /bigdata/students/storage/$PRIMARY_HOST/node_${PORT}/corruption.txt_chunk_0
+# In a fourth terminal, ssh to the replica host shown in the snapshot and change
+# the file content without changing the checksum sidecar
+printf 'hahahaha\n' > /bigdata/students/aawihardja/storage/$PRIMARY_HOST/node_${PORT}/corruption.txt_chunk_0
 
 # In the Client terminal, retrieve the file (this will trigger recovery)
 ./bin/client --config config.orion.json retrieve --file corruption.txt
