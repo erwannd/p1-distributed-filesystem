@@ -1,5 +1,5 @@
 syntax = "proto3";
-option go_package = "github.com/erwannd/dfs/messages;messages";
+option go_package = "github.com/erwannd/p1-distributed-filesystem/messages;messages";
 
 /**
  * Storage -> Controller

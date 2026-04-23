@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/erwannd/dfs/utils"
+	"github.com/erwannd/p1-distributed-filesystem/utils"
 )
 
 /**

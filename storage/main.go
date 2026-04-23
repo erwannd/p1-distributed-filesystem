@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/erwannd/dfs/utils"
+	"github.com/erwannd/p1-distributed-filesystem/utils"
 )
 
 // Storage Node main():

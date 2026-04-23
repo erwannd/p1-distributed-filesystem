@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/erwannd/dfs/messages"
-	"github.com/erwannd/dfs/utils"
+	"github.com/erwannd/p1-distributed-filesystem/messages"
+	"github.com/erwannd/p1-distributed-filesystem/utils"
 )
 
 type Client struct {

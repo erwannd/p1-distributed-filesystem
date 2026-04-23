@@ -2372,7 +2372,7 @@ const file_dfs_proto_rawDesc = "" +
 	"\x15repair_chunk_response\x18\x17 \x01(\v2\x14.RepairChunkResponseH\x00R\x13repairChunkResponse\x12P\n" +
 	"\x17chunk_locations_request\x18\x18 \x01(\v2\x16.ChunkLocationsRequestH\x00R\x15chunkLocationsRequest\x12S\n" +
 	"\x18chunk_locations_response\x18\x19 \x01(\v2\x17.ChunkLocationsResponseH\x00R\x16chunkLocationsResponseB\x05\n" +
-	"\x03msgB*Z(github.com/erwannd/dfs/messages;messagesb\x06proto3"
+	"\x03msgB@Z>github.com/erwannd/p1-distributed-filesystem/messages;messagesb\x06proto3"
 
 var (
 	file_dfs_proto_rawDescOnce sync.Once
