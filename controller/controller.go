@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net"
@@ -46,6 +47,17 @@ type ChunkMetadata struct {
 	Nodes      []*NodeInfo // which nodes has this chunk?
 }
 
+// filePlanningSnapshot is a controller-local immutable view of a completed file
+// that the split planner can use without holding controller.mu during network
+// reads to storage nodes.
+type filePlanningSnapshot struct {
+	Filename   string
+	FileSize   uint64
+	ChunkSize  uint64
+	ChunkCount uint32
+	ChunkNodes map[uint32][]*messages.NodeInfo
+}
+
 /**
  * Parse message type & dispatch to appropriate handler.
  */
@@ -71,6 +83,10 @@ func handleConnection(controller *Controller, conn net.Conn) {
 			handleStoreRequest(controller, msg.StoreRequest, handler)
 		case *messages.Wrapper_RetrieveRequest:
 			handleRetrieveRequest(controller, msg.RetrieveRequest, handler)
+		case *messages.Wrapper_StatFileRequest:
+			handleStatFileRequest(controller, msg.StatFileRequest, handler)
+		case *messages.Wrapper_GetInputSplitsRequest:
+			handleGetInputSplitsRequest(controller, msg.GetInputSplitsRequest, handler)
 		case *messages.Wrapper_DeleteRequest:
 			handleDeleteRequest(controller, msg.DeleteRequest, handler)
 		case *messages.Wrapper_ListRequest:
@@ -387,6 +403,94 @@ func handleRetrieveRequest(controller *Controller, msg *messages.RetrieveRequest
 		return
 	}
 	log.Printf("[Controller] Retrieve request for %s: %d chunks located", msg.Filename, fileMeta.ChunkCount)
+}
+
+/**
+ * Return metadata for one completed file without exposing the full retrieve
+ * path. Project 2 uses this to reason about chunk sizing and split planning.
+ */
+func handleStatFileRequest(controller *Controller, msg *messages.StatFileRequest, handler *messages.MessageHandler) {
+	controller.mu.RLock()
+	defer controller.mu.RUnlock()
+
+	fileMeta, exists := controller.files[msg.Filename]
+	if !exists {
+		if _, pending := controller.pendingFiles[msg.Filename]; pending {
+			sendStatFileResponse(handler, &messages.StatFileResponse{
+				Ok:    false,
+				Error: fmt.Sprintf("file %s is still being stored", msg.Filename),
+			})
+			return
+		}
+
+		sendStatFileResponse(handler, &messages.StatFileResponse{
+			Ok:    false,
+			Error: fmt.Sprintf("file %s does not exist", msg.Filename),
+		})
+		return
+	}
+
+	sendStatFileResponse(handler, &messages.StatFileResponse{
+		Ok:         true,
+		Filename:   fileMeta.Filename,
+		FileSize:   fileMeta.FileSize,
+		ChunkSize:  fileMeta.ChunkSize,
+		ChunkCount: fileMeta.ChunkCount,
+	})
+}
+
+/**
+ * Build logical read splits for MapReduce without changing the DFS' physical
+ * chunk layout. Binary mode mirrors Project 1's chunk boundaries. Text mode
+ * expands split ends to the next newline so each mapper receives whole lines.
+ */
+func handleGetInputSplitsRequest(controller *Controller, msg *messages.GetInputSplitsRequest, handler *messages.MessageHandler) {
+	snapshot, pending, exists := controller.snapshotFileForPlanning(msg.Filename)
+	if !exists {
+		errMsg := fmt.Sprintf("file %s does not exist", msg.Filename)
+		if pending {
+			errMsg = fmt.Sprintf("file %s is still being stored", msg.Filename)
+		}
+		sendInputSplitsResponse(handler, &messages.GetInputSplitsResponse{
+			Ok:    false,
+			Error: errMsg,
+		})
+		return
+	}
+
+	desiredSplitSize := msg.DesiredSplitSizeBytes
+	if desiredSplitSize == 0 {
+		desiredSplitSize = snapshot.ChunkSize
+	}
+
+	var (
+		splits []*messages.InputSplit
+		err    error
+	)
+
+	switch msg.SplitMode {
+	case messages.SplitMode_BINARY_CHUNKS:
+		splits = buildBinaryChunkSplits(snapshot)
+	case messages.SplitMode_TEXT_LINES:
+		splits, err = controller.buildTextLineSplits(snapshot, desiredSplitSize)
+	case messages.SplitMode_SPLIT_MODE_UNSPECIFIED:
+		err = fmt.Errorf("split mode must be specified")
+	default:
+		err = fmt.Errorf("unsupported split mode %v", msg.SplitMode)
+	}
+
+	if err != nil {
+		sendInputSplitsResponse(handler, &messages.GetInputSplitsResponse{
+			Ok:    false,
+			Error: err.Error(),
+		})
+		return
+	}
+
+	sendInputSplitsResponse(handler, &messages.GetInputSplitsResponse{
+		Ok:     true,
+		Splits: splits,
+	})
 }
 
 /**
@@ -1041,6 +1145,284 @@ func (c *Controller) buildDeleteTasksLocked(filename string, fileMeta *FileMetad
 
 func nodeAddressKey(hostname string, port int32) string {
 	return fmt.Sprintf("%s:%d", hostname, port)
+}
+
+func sendStatFileResponse(handler *messages.MessageHandler, resp *messages.StatFileResponse) {
+	if err := handler.Send(&messages.Wrapper{
+		Msg: &messages.Wrapper_StatFileResponse{
+			StatFileResponse: resp,
+		},
+	}); err != nil {
+		log.Printf("[Controller] Failed to send StatFileResponse: %v", err)
+	}
+}
+
+func sendInputSplitsResponse(handler *messages.MessageHandler, resp *messages.GetInputSplitsResponse) {
+	if err := handler.Send(&messages.Wrapper{
+		Msg: &messages.Wrapper_GetInputSplitsResponse{
+			GetInputSplitsResponse: resp,
+		},
+	}); err != nil {
+		log.Printf("[Controller] Failed to send GetInputSplitsResponse: %v", err)
+	}
+}
+
+func (c *Controller) snapshotFileForPlanning(filename string) (*filePlanningSnapshot, bool, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if _, pending := c.pendingFiles[filename]; pending {
+		return nil, true, false
+	}
+
+	fileMeta, exists := c.files[filename]
+	if !exists {
+		return nil, false, false
+	}
+
+	snapshot := &filePlanningSnapshot{
+		Filename:   fileMeta.Filename,
+		FileSize:   fileMeta.FileSize,
+		ChunkSize:  fileMeta.ChunkSize,
+		ChunkCount: fileMeta.ChunkCount,
+		ChunkNodes: make(map[uint32][]*messages.NodeInfo, len(fileMeta.Chunks)),
+	}
+
+	for chunkIndex, chunkMeta := range fileMeta.Chunks {
+		nodes := make([]*messages.NodeInfo, 0, len(chunkMeta.Nodes))
+		for _, node := range chunkMeta.Nodes {
+			nodes = append(nodes, &messages.NodeInfo{
+				NodeId:   node.NodeId,
+				Hostname: node.Hostname,
+				Port:     node.Port,
+			})
+		}
+		snapshot.ChunkNodes[chunkIndex] = nodes
+	}
+
+	return snapshot, false, true
+}
+
+func buildBinaryChunkSplits(snapshot *filePlanningSnapshot) []*messages.InputSplit {
+	splits := make([]*messages.InputSplit, 0, snapshot.ChunkCount)
+
+	for chunkIndex := uint32(0); chunkIndex < snapshot.ChunkCount; chunkIndex++ {
+		start := uint64(chunkIndex) * snapshot.ChunkSize
+		end := start + chunkSizeForIndex(snapshot.FileSize, snapshot.ChunkSize, snapshot.ChunkCount, chunkIndex)
+
+		splits = append(splits, &messages.InputSplit{
+			SplitIndex:         chunkIndex,
+			Filename:           snapshot.Filename,
+			StartOffset:        start,
+			EndOffsetExclusive: end,
+			StartLineNumber:    0,
+			PreferredNodes:     cloneMessageNodes(snapshot.ChunkNodes[chunkIndex]),
+		})
+	}
+
+	return splits
+}
+
+// buildTextLineSplits computes exact line-aware logical splits on demand. The
+// controller keeps storage chunking unchanged and uses verified range reads to
+// scan the file sequentially, so start_line_number values stay exact without a
+// persistent secondary index.
+func (c *Controller) buildTextLineSplits(snapshot *filePlanningSnapshot, desiredSplitSize uint64) ([]*messages.InputSplit, error) {
+	if desiredSplitSize == 0 {
+		return nil, fmt.Errorf("desired split size must be greater than zero")
+	}
+	if snapshot.FileSize == 0 {
+		return []*messages.InputSplit{}, nil
+	}
+
+	splits := make([]*messages.InputSplit, 0)
+	startOffset := uint64(0)
+	startLineNumber := uint64(0)
+	splitIndex := uint32(0)
+
+	for startOffset < snapshot.FileSize {
+		nominalEnd := minUint64(startOffset+desiredSplitSize, snapshot.FileSize)
+		endOffset := nominalEnd
+		if nominalEnd < snapshot.FileSize {
+			var err error
+			endOffset, err = c.advanceToNextLineBoundary(snapshot, nominalEnd)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		splitBytes, err := c.readFileRange(snapshot, startOffset, endOffset-startOffset)
+		if err != nil {
+			return nil, err
+		}
+
+		preferredNodes := cloneMessageNodes(snapshot.chunkNodesForOffset(startOffset))
+		splits = append(splits, &messages.InputSplit{
+			SplitIndex:         splitIndex,
+			Filename:           snapshot.Filename,
+			StartOffset:        startOffset,
+			EndOffsetExclusive: endOffset,
+			StartLineNumber:    startLineNumber,
+			PreferredNodes:     preferredNodes,
+		})
+
+		startLineNumber += uint64(bytes.Count(splitBytes, []byte{'\n'}))
+		startOffset = endOffset
+		splitIndex++
+	}
+
+	return splits, nil
+}
+
+// advanceToNextLineBoundary scans forward from an approximate split boundary
+// until it finds '\n' or EOF. This lets text-mode splits honor full records
+// while still using the DFS' existing fixed-size chunk storage underneath.
+func (c *Controller) advanceToNextLineBoundary(snapshot *filePlanningSnapshot, offset uint64) (uint64, error) {
+	if offset >= snapshot.FileSize {
+		return snapshot.FileSize, nil
+	}
+
+	const scanWindow uint64 = 64 * 1024
+	current := offset
+	for current < snapshot.FileSize {
+		windowSize := minUint64(scanWindow, snapshot.FileSize-current)
+		data, err := c.readFileRange(snapshot, current, windowSize)
+		if err != nil {
+			return 0, err
+		}
+		if idx := bytes.IndexByte(data, '\n'); idx >= 0 {
+			return current + uint64(idx) + 1, nil
+		}
+		if len(data) == 0 {
+			break
+		}
+		current += uint64(len(data))
+	}
+
+	return snapshot.FileSize, nil
+}
+
+// readFileRange composes verified per-chunk range reads into a logical file
+// range. The controller uses this internally for split planning; Project 2 can
+// later call the public ReadChunkRange API directly from workers.
+func (c *Controller) readFileRange(snapshot *filePlanningSnapshot, startOffset uint64, length uint64) ([]byte, error) {
+	if length == 0 {
+		return []byte{}, nil
+	}
+	if startOffset >= snapshot.FileSize {
+		return nil, fmt.Errorf("read range starts beyond EOF")
+	}
+
+	endOffset := minUint64(startOffset+length, snapshot.FileSize)
+	data := make([]byte, 0, endOffset-startOffset)
+
+	for current := startOffset; current < endOffset; {
+		chunkIndex := uint32(current / snapshot.ChunkSize)
+		chunkOffset := current % snapshot.ChunkSize
+		chunkEnd := minUint64(uint64(chunkIndex+1)*snapshot.ChunkSize, snapshot.FileSize)
+		readLength := minUint64(endOffset-current, chunkEnd-current)
+
+		chunkBytes, err := c.readChunkRange(snapshot, chunkIndex, chunkOffset, readLength)
+		if err != nil {
+			return nil, err
+		}
+		if len(chunkBytes) == 0 {
+			return nil, fmt.Errorf("received empty range for %s[%d] at offset %d", snapshot.Filename, chunkIndex, chunkOffset)
+		}
+
+		data = append(data, chunkBytes...)
+		current += uint64(len(chunkBytes))
+	}
+
+	return data, nil
+}
+
+func (c *Controller) readChunkRange(snapshot *filePlanningSnapshot, chunkIndex uint32, chunkOffset uint64, length uint64) ([]byte, error) {
+	nodes := snapshot.ChunkNodes[chunkIndex]
+	if len(nodes) == 0 {
+		return nil, fmt.Errorf("chunk %s[%d] has no readable replicas", snapshot.Filename, chunkIndex)
+	}
+
+	chunkInfo := &messages.ChunkInfo{
+		Filename:   snapshot.Filename,
+		ChunkIndex: chunkIndex,
+	}
+
+	var lastErr error
+	for _, node := range nodes {
+		data, err := readChunkRangeFromNode(node, chunkInfo, chunkOffset, length)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("failed to read %s[%d] range from all replicas: %w", snapshot.Filename, chunkIndex, lastErr)
+}
+
+func readChunkRangeFromNode(node *messages.NodeInfo, chunkInfo *messages.ChunkInfo, chunkOffset uint64, length uint64) ([]byte, error) {
+	addr := fmt.Sprintf("%s:%d", node.Hostname, node.Port)
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to %s: %w", addr, err)
+	}
+	handler := messages.NewMessageHandler(conn)
+	defer handler.Close()
+
+	req := &messages.Wrapper{
+		Msg: &messages.Wrapper_ReadChunkRangeRequest{
+			ReadChunkRangeRequest: &messages.ReadChunkRangeRequest{
+				ChunkInfo:   chunkInfo,
+				ChunkOffset: chunkOffset,
+				Length:      length,
+			},
+		},
+	}
+	if err := handler.Send(req); err != nil {
+		return nil, fmt.Errorf("failed to send ReadChunkRangeRequest: %w", err)
+	}
+
+	wrapper, err := handler.Receive()
+	if err != nil {
+		return nil, fmt.Errorf("failed to receive ReadChunkRangeResponse: %w", err)
+	}
+
+	resp := wrapper.Msg.(*messages.Wrapper_ReadChunkRangeResponse).ReadChunkRangeResponse
+	if !resp.Ok {
+		return nil, fmt.Errorf("storage rejected range read: %s", resp.Error)
+	}
+
+	return resp.ChunkData, nil
+}
+
+func (s *filePlanningSnapshot) chunkNodesForOffset(offset uint64) []*messages.NodeInfo {
+	if s.ChunkCount == 0 {
+		return nil
+	}
+	chunkIndex := uint32(offset / s.ChunkSize)
+	if chunkIndex >= s.ChunkCount {
+		chunkIndex = s.ChunkCount - 1
+	}
+	return s.ChunkNodes[chunkIndex]
+}
+
+func cloneMessageNodes(nodes []*messages.NodeInfo) []*messages.NodeInfo {
+	cloned := make([]*messages.NodeInfo, 0, len(nodes))
+	for _, node := range nodes {
+		cloned = append(cloned, &messages.NodeInfo{
+			NodeId:   node.NodeId,
+			Hostname: node.Hostname,
+			Port:     node.Port,
+		})
+	}
+	return cloned
+}
+
+func minUint64(a, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 /**

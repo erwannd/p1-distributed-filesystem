@@ -222,6 +222,8 @@ func (s *StorageNode) handleConnection(conn net.Conn) {
 		s.handleStoreChunk(msg.StoreChunkRequest, handler)
 	case *messages.Wrapper_RetrieveChunkRequest:
 		s.handleRetrieveChunk(msg.RetrieveChunkRequest, handler)
+	case *messages.Wrapper_ReadChunkRangeRequest:
+		s.handleReadChunkRange(msg.ReadChunkRangeRequest, handler)
 	case *messages.Wrapper_RepairChunkRequest:
 		s.handleRepairChunk(msg.RepairChunkRequest, handler)
 	case *messages.Wrapper_DeleteChunkRequest:
@@ -326,6 +328,59 @@ func (s *StorageNode) handleRetrieveChunk(msg *messages.RetrieveChunkRequest, ha
 		return
 	}
 	log.Printf("[StorageNode] Sent chunk %s[%d] (%d bytes)", msg.ChunkInfo.Filename, msg.ChunkInfo.ChunkIndex, len(data))
+}
+
+// handleReadChunkRange serves a verified sub-range of one chunk. The logical
+// file remains chunked on disk; higher layers can compose these reads into
+// text-aware input splits or other byte-range views.
+func (s *StorageNode) handleReadChunkRange(msg *messages.ReadChunkRangeRequest, handler *messages.MessageHandler) {
+	data, err := s.readVerifiedLocalChunk(msg.ChunkInfo)
+	if err != nil {
+		handler.Send(&messages.Wrapper{
+			Msg: &messages.Wrapper_ReadChunkRangeResponse{
+				ReadChunkRangeResponse: &messages.ReadChunkRangeResponse{
+					Ok:        false,
+					Error:     err.Error(),
+					ChunkInfo: msg.ChunkInfo,
+				},
+			},
+		})
+		return
+	}
+
+	if msg.ChunkOffset > uint64(len(data)) {
+		handler.Send(&messages.Wrapper{
+			Msg: &messages.Wrapper_ReadChunkRangeResponse{
+				ReadChunkRangeResponse: &messages.ReadChunkRangeResponse{
+					Ok:        false,
+					Error:     fmt.Sprintf("range offset %d beyond chunk size %d", msg.ChunkOffset, len(data)),
+					ChunkInfo: msg.ChunkInfo,
+				},
+			},
+		})
+		return
+	}
+
+	end := minUint64(msg.ChunkOffset+msg.Length, uint64(len(data)))
+	rangeData := data[msg.ChunkOffset:end]
+
+	s.numRequests.Add(1)
+
+	if err := handler.Send(&messages.Wrapper{
+		Msg: &messages.Wrapper_ReadChunkRangeResponse{
+			ReadChunkRangeResponse: &messages.ReadChunkRangeResponse{
+				Ok:        true,
+				ChunkInfo: msg.ChunkInfo,
+				ChunkData: rangeData,
+			},
+		},
+	}); err != nil {
+		log.Printf("[StorageNode] Failed to send ReadChunkRangeResponse: %v", err)
+		return
+	}
+
+	log.Printf("[StorageNode] Sent range for %s[%d] offset=%d length=%d",
+		msg.ChunkInfo.Filename, msg.ChunkInfo.ChunkIndex, msg.ChunkOffset, len(rangeData))
 }
 
 /**
@@ -642,4 +697,11 @@ func (s *StorageNode) fetchChunkLocations(chunkInfo *messages.ChunkInfo) ([]*mes
 	}
 
 	return resp.Nodes, nil
+}
+
+func minUint64(a, b uint64) uint64 {
+	if a < b {
+		return a
+	}
+	return b
 }

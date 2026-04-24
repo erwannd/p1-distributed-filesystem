@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type SplitMode int32
+
+const (
+	SplitMode_SPLIT_MODE_UNSPECIFIED SplitMode = 0
+	SplitMode_TEXT_LINES             SplitMode = 1
+	SplitMode_BINARY_CHUNKS          SplitMode = 2
+)
+
+// Enum value maps for SplitMode.
+var (
+	SplitMode_name = map[int32]string{
+		0: "SPLIT_MODE_UNSPECIFIED",
+		1: "TEXT_LINES",
+		2: "BINARY_CHUNKS",
+	}
+	SplitMode_value = map[string]int32{
+		"SPLIT_MODE_UNSPECIFIED": 0,
+		"TEXT_LINES":             1,
+		"BINARY_CHUNKS":          2,
+	}
+)
+
+func (x SplitMode) Enum() *SplitMode {
+	p := new(SplitMode)
+	*p = x
+	return p
+}
+
+func (x SplitMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SplitMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_dfs_proto_enumTypes[0].Descriptor()
+}
+
+func (SplitMode) Type() protoreflect.EnumType {
+	return &file_dfs_proto_enumTypes[0]
+}
+
+func (x SplitMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SplitMode.Descriptor instead.
+func (SplitMode) EnumDescriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{0}
+}
+
 // *
 // Storage -> Controller
 // Sent when a Storage node just started
@@ -735,6 +784,344 @@ func (x *RetrieveResponse) GetLocations() []*ChunkMapping {
 }
 
 // Client -> Controller
+// Returns metadata for a single completed file.
+type StatFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatFileRequest) Reset() {
+	*x = StatFileRequest{}
+	mi := &file_dfs_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatFileRequest) ProtoMessage() {}
+
+func (x *StatFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatFileRequest.ProtoReflect.Descriptor instead.
+func (*StatFileRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *StatFileRequest) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+// Controller -> Client
+type StatFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"` // empty if ok=true
+	Filename      string                 `protobuf:"bytes,3,opt,name=filename,proto3" json:"filename,omitempty"`
+	FileSize      uint64                 `protobuf:"varint,4,opt,name=file_size,json=fileSize,proto3" json:"file_size,omitempty"`
+	ChunkSize     uint64                 `protobuf:"varint,5,opt,name=chunk_size,json=chunkSize,proto3" json:"chunk_size,omitempty"`
+	ChunkCount    uint32                 `protobuf:"varint,6,opt,name=chunk_count,json=chunkCount,proto3" json:"chunk_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatFileResponse) Reset() {
+	*x = StatFileResponse{}
+	mi := &file_dfs_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatFileResponse) ProtoMessage() {}
+
+func (x *StatFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatFileResponse.ProtoReflect.Descriptor instead.
+func (*StatFileResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *StatFileResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *StatFileResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *StatFileResponse) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *StatFileResponse) GetFileSize() uint64 {
+	if x != nil {
+		return x.FileSize
+	}
+	return 0
+}
+
+func (x *StatFileResponse) GetChunkSize() uint64 {
+	if x != nil {
+		return x.ChunkSize
+	}
+	return 0
+}
+
+func (x *StatFileResponse) GetChunkCount() uint32 {
+	if x != nil {
+		return x.ChunkCount
+	}
+	return 0
+}
+
+type InputSplit struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	SplitIndex         uint32                 `protobuf:"varint,1,opt,name=split_index,json=splitIndex,proto3" json:"split_index,omitempty"`
+	Filename           string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
+	StartOffset        uint64                 `protobuf:"varint,3,opt,name=start_offset,json=startOffset,proto3" json:"start_offset,omitempty"`
+	EndOffsetExclusive uint64                 `protobuf:"varint,4,opt,name=end_offset_exclusive,json=endOffsetExclusive,proto3" json:"end_offset_exclusive,omitempty"`
+	StartLineNumber    uint64                 `protobuf:"varint,5,opt,name=start_line_number,json=startLineNumber,proto3" json:"start_line_number,omitempty"` // zero-based; 0 for binary splits
+	PreferredNodes     []*NodeInfo            `protobuf:"bytes,6,rep,name=preferred_nodes,json=preferredNodes,proto3" json:"preferred_nodes,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *InputSplit) Reset() {
+	*x = InputSplit{}
+	mi := &file_dfs_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InputSplit) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InputSplit) ProtoMessage() {}
+
+func (x *InputSplit) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InputSplit.ProtoReflect.Descriptor instead.
+func (*InputSplit) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *InputSplit) GetSplitIndex() uint32 {
+	if x != nil {
+		return x.SplitIndex
+	}
+	return 0
+}
+
+func (x *InputSplit) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *InputSplit) GetStartOffset() uint64 {
+	if x != nil {
+		return x.StartOffset
+	}
+	return 0
+}
+
+func (x *InputSplit) GetEndOffsetExclusive() uint64 {
+	if x != nil {
+		return x.EndOffsetExclusive
+	}
+	return 0
+}
+
+func (x *InputSplit) GetStartLineNumber() uint64 {
+	if x != nil {
+		return x.StartLineNumber
+	}
+	return 0
+}
+
+func (x *InputSplit) GetPreferredNodes() []*NodeInfo {
+	if x != nil {
+		return x.PreferredNodes
+	}
+	return nil
+}
+
+// Client -> Controller
+// Ask the DFS to expose logical read splits for MapReduce.
+type GetInputSplitsRequest struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Filename              string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	SplitMode             SplitMode              `protobuf:"varint,2,opt,name=split_mode,json=splitMode,proto3,enum=SplitMode" json:"split_mode,omitempty"`
+	DesiredSplitSizeBytes uint64                 `protobuf:"varint,3,opt,name=desired_split_size_bytes,json=desiredSplitSizeBytes,proto3" json:"desired_split_size_bytes,omitempty"` // 0 means "use DFS chunk size"
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *GetInputSplitsRequest) Reset() {
+	*x = GetInputSplitsRequest{}
+	mi := &file_dfs_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInputSplitsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInputSplitsRequest) ProtoMessage() {}
+
+func (x *GetInputSplitsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInputSplitsRequest.ProtoReflect.Descriptor instead.
+func (*GetInputSplitsRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *GetInputSplitsRequest) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *GetInputSplitsRequest) GetSplitMode() SplitMode {
+	if x != nil {
+		return x.SplitMode
+	}
+	return SplitMode_SPLIT_MODE_UNSPECIFIED
+}
+
+func (x *GetInputSplitsRequest) GetDesiredSplitSizeBytes() uint64 {
+	if x != nil {
+		return x.DesiredSplitSizeBytes
+	}
+	return 0
+}
+
+// Controller -> Client
+type GetInputSplitsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Splits        []*InputSplit          `protobuf:"bytes,3,rep,name=splits,proto3" json:"splits,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetInputSplitsResponse) Reset() {
+	*x = GetInputSplitsResponse{}
+	mi := &file_dfs_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetInputSplitsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetInputSplitsResponse) ProtoMessage() {}
+
+func (x *GetInputSplitsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetInputSplitsResponse.ProtoReflect.Descriptor instead.
+func (*GetInputSplitsResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetInputSplitsResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *GetInputSplitsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *GetInputSplitsResponse) GetSplits() []*InputSplit {
+	if x != nil {
+		return x.Splits
+	}
+	return nil
+}
+
+// Client -> Controller
 type DeleteRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
@@ -744,7 +1131,7 @@ type DeleteRequest struct {
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_dfs_proto_msgTypes[12]
+	mi := &file_dfs_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +1143,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[12]
+	mi := &file_dfs_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +1156,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{12}
+	return file_dfs_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DeleteRequest) GetFilename() string {
@@ -790,7 +1177,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_dfs_proto_msgTypes[13]
+	mi := &file_dfs_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -802,7 +1189,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[13]
+	mi := &file_dfs_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -815,7 +1202,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{13}
+	return file_dfs_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *DeleteResponse) GetOk() bool {
@@ -842,7 +1229,7 @@ type ListRequest struct {
 
 func (x *ListRequest) Reset() {
 	*x = ListRequest{}
-	mi := &file_dfs_proto_msgTypes[14]
+	mi := &file_dfs_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -854,7 +1241,7 @@ func (x *ListRequest) String() string {
 func (*ListRequest) ProtoMessage() {}
 
 func (x *ListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[14]
+	mi := &file_dfs_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -867,7 +1254,7 @@ func (x *ListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRequest.ProtoReflect.Descriptor instead.
 func (*ListRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{14}
+	return file_dfs_proto_rawDescGZIP(), []int{19}
 }
 
 // Represents a file in the system
@@ -882,7 +1269,7 @@ type FileInfo struct {
 
 func (x *FileInfo) Reset() {
 	*x = FileInfo{}
-	mi := &file_dfs_proto_msgTypes[15]
+	mi := &file_dfs_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -894,7 +1281,7 @@ func (x *FileInfo) String() string {
 func (*FileInfo) ProtoMessage() {}
 
 func (x *FileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[15]
+	mi := &file_dfs_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -907,7 +1294,7 @@ func (x *FileInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
 func (*FileInfo) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{15}
+	return file_dfs_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *FileInfo) GetFilename() string {
@@ -943,7 +1330,7 @@ type ListResponse struct {
 
 func (x *ListResponse) Reset() {
 	*x = ListResponse{}
-	mi := &file_dfs_proto_msgTypes[16]
+	mi := &file_dfs_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -955,7 +1342,7 @@ func (x *ListResponse) String() string {
 func (*ListResponse) ProtoMessage() {}
 
 func (x *ListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[16]
+	mi := &file_dfs_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -968,7 +1355,7 @@ func (x *ListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListResponse.ProtoReflect.Descriptor instead.
 func (*ListResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{16}
+	return file_dfs_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListResponse) GetOk() bool {
@@ -1002,7 +1389,7 @@ type ClusterInfoRequest struct {
 
 func (x *ClusterInfoRequest) Reset() {
 	*x = ClusterInfoRequest{}
-	mi := &file_dfs_proto_msgTypes[17]
+	mi := &file_dfs_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1014,7 +1401,7 @@ func (x *ClusterInfoRequest) String() string {
 func (*ClusterInfoRequest) ProtoMessage() {}
 
 func (x *ClusterInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[17]
+	mi := &file_dfs_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1027,7 +1414,7 @@ func (x *ClusterInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterInfoRequest.ProtoReflect.Descriptor instead.
 func (*ClusterInfoRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{17}
+	return file_dfs_proto_rawDescGZIP(), []int{22}
 }
 
 // Represents a storage node's runtime stats
@@ -1042,7 +1429,7 @@ type NodeStats struct {
 
 func (x *NodeStats) Reset() {
 	*x = NodeStats{}
-	mi := &file_dfs_proto_msgTypes[18]
+	mi := &file_dfs_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1054,7 +1441,7 @@ func (x *NodeStats) String() string {
 func (*NodeStats) ProtoMessage() {}
 
 func (x *NodeStats) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[18]
+	mi := &file_dfs_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1067,7 +1454,7 @@ func (x *NodeStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeStats.ProtoReflect.Descriptor instead.
 func (*NodeStats) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{18}
+	return file_dfs_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *NodeStats) GetNodeInfo() *NodeInfo {
@@ -1103,7 +1490,7 @@ type ClusterInfoResponse struct {
 
 func (x *ClusterInfoResponse) Reset() {
 	*x = ClusterInfoResponse{}
-	mi := &file_dfs_proto_msgTypes[19]
+	mi := &file_dfs_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1115,7 +1502,7 @@ func (x *ClusterInfoResponse) String() string {
 func (*ClusterInfoResponse) ProtoMessage() {}
 
 func (x *ClusterInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[19]
+	mi := &file_dfs_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1128,7 +1515,7 @@ func (x *ClusterInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClusterInfoResponse.ProtoReflect.Descriptor instead.
 func (*ClusterInfoResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{19}
+	return file_dfs_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ClusterInfoResponse) GetNodeStats() []*NodeStats {
@@ -1165,7 +1552,7 @@ type StoreChunkRequest struct {
 
 func (x *StoreChunkRequest) Reset() {
 	*x = StoreChunkRequest{}
-	mi := &file_dfs_proto_msgTypes[20]
+	mi := &file_dfs_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1177,7 +1564,7 @@ func (x *StoreChunkRequest) String() string {
 func (*StoreChunkRequest) ProtoMessage() {}
 
 func (x *StoreChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[20]
+	mi := &file_dfs_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1190,7 +1577,7 @@ func (x *StoreChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreChunkRequest.ProtoReflect.Descriptor instead.
 func (*StoreChunkRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{20}
+	return file_dfs_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *StoreChunkRequest) GetChunkInfo() *ChunkInfo {
@@ -1233,7 +1620,7 @@ type StoreChunkResponse struct {
 
 func (x *StoreChunkResponse) Reset() {
 	*x = StoreChunkResponse{}
-	mi := &file_dfs_proto_msgTypes[21]
+	mi := &file_dfs_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1245,7 +1632,7 @@ func (x *StoreChunkResponse) String() string {
 func (*StoreChunkResponse) ProtoMessage() {}
 
 func (x *StoreChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[21]
+	mi := &file_dfs_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1258,7 +1645,7 @@ func (x *StoreChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StoreChunkResponse.ProtoReflect.Descriptor instead.
 func (*StoreChunkResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{21}
+	return file_dfs_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *StoreChunkResponse) GetOk() bool {
@@ -1296,7 +1683,7 @@ type RetrieveChunkRequest struct {
 
 func (x *RetrieveChunkRequest) Reset() {
 	*x = RetrieveChunkRequest{}
-	mi := &file_dfs_proto_msgTypes[22]
+	mi := &file_dfs_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1308,7 +1695,7 @@ func (x *RetrieveChunkRequest) String() string {
 func (*RetrieveChunkRequest) ProtoMessage() {}
 
 func (x *RetrieveChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[22]
+	mi := &file_dfs_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1321,7 +1708,7 @@ func (x *RetrieveChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetrieveChunkRequest.ProtoReflect.Descriptor instead.
 func (*RetrieveChunkRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{22}
+	return file_dfs_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *RetrieveChunkRequest) GetChunkInfo() *ChunkInfo {
@@ -1351,7 +1738,7 @@ type RetrieveChunkResponse struct {
 
 func (x *RetrieveChunkResponse) Reset() {
 	*x = RetrieveChunkResponse{}
-	mi := &file_dfs_proto_msgTypes[23]
+	mi := &file_dfs_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1363,7 +1750,7 @@ func (x *RetrieveChunkResponse) String() string {
 func (*RetrieveChunkResponse) ProtoMessage() {}
 
 func (x *RetrieveChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[23]
+	mi := &file_dfs_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1376,7 +1763,7 @@ func (x *RetrieveChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RetrieveChunkResponse.ProtoReflect.Descriptor instead.
 func (*RetrieveChunkResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{23}
+	return file_dfs_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *RetrieveChunkResponse) GetOk() bool {
@@ -1400,6 +1787,138 @@ func (x *RetrieveChunkResponse) GetChunkData() []byte {
 	return nil
 }
 
+// Client/Controller -> Storage
+// Read a verified byte range from one chunk without changing the on-disk
+// storage format. Logical file-range reads can be composed from this primitive.
+type ReadChunkRangeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ChunkInfo     *ChunkInfo             `protobuf:"bytes,1,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"`
+	ChunkOffset   uint64                 `protobuf:"varint,2,opt,name=chunk_offset,json=chunkOffset,proto3" json:"chunk_offset,omitempty"`
+	Length        uint64                 `protobuf:"varint,3,opt,name=length,proto3" json:"length,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadChunkRangeRequest) Reset() {
+	*x = ReadChunkRangeRequest{}
+	mi := &file_dfs_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadChunkRangeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadChunkRangeRequest) ProtoMessage() {}
+
+func (x *ReadChunkRangeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadChunkRangeRequest.ProtoReflect.Descriptor instead.
+func (*ReadChunkRangeRequest) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *ReadChunkRangeRequest) GetChunkInfo() *ChunkInfo {
+	if x != nil {
+		return x.ChunkInfo
+	}
+	return nil
+}
+
+func (x *ReadChunkRangeRequest) GetChunkOffset() uint64 {
+	if x != nil {
+		return x.ChunkOffset
+	}
+	return 0
+}
+
+func (x *ReadChunkRangeRequest) GetLength() uint64 {
+	if x != nil {
+		return x.Length
+	}
+	return 0
+}
+
+// Storage -> Client/Controller
+type ReadChunkRangeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	ChunkInfo     *ChunkInfo             `protobuf:"bytes,3,opt,name=chunk_info,json=chunkInfo,proto3" json:"chunk_info,omitempty"`
+	ChunkData     []byte                 `protobuf:"bytes,4,opt,name=chunk_data,json=chunkData,proto3" json:"chunk_data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadChunkRangeResponse) Reset() {
+	*x = ReadChunkRangeResponse{}
+	mi := &file_dfs_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadChunkRangeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadChunkRangeResponse) ProtoMessage() {}
+
+func (x *ReadChunkRangeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_dfs_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadChunkRangeResponse.ProtoReflect.Descriptor instead.
+func (*ReadChunkRangeResponse) Descriptor() ([]byte, []int) {
+	return file_dfs_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *ReadChunkRangeResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ReadChunkRangeResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ReadChunkRangeResponse) GetChunkInfo() *ChunkInfo {
+	if x != nil {
+		return x.ChunkInfo
+	}
+	return nil
+}
+
+func (x *ReadChunkRangeResponse) GetChunkData() []byte {
+	if x != nil {
+		return x.ChunkData
+	}
+	return nil
+}
+
 // Controller -> Storage
 // Controller issues deletion instead of client
 type DeleteChunkRequest struct {
@@ -1411,7 +1930,7 @@ type DeleteChunkRequest struct {
 
 func (x *DeleteChunkRequest) Reset() {
 	*x = DeleteChunkRequest{}
-	mi := &file_dfs_proto_msgTypes[24]
+	mi := &file_dfs_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1423,7 +1942,7 @@ func (x *DeleteChunkRequest) String() string {
 func (*DeleteChunkRequest) ProtoMessage() {}
 
 func (x *DeleteChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[24]
+	mi := &file_dfs_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1436,7 +1955,7 @@ func (x *DeleteChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteChunkRequest.ProtoReflect.Descriptor instead.
 func (*DeleteChunkRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{24}
+	return file_dfs_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *DeleteChunkRequest) GetChunkInfo() *ChunkInfo {
@@ -1457,7 +1976,7 @@ type DeleteChunkResponse struct {
 
 func (x *DeleteChunkResponse) Reset() {
 	*x = DeleteChunkResponse{}
-	mi := &file_dfs_proto_msgTypes[25]
+	mi := &file_dfs_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1469,7 +1988,7 @@ func (x *DeleteChunkResponse) String() string {
 func (*DeleteChunkResponse) ProtoMessage() {}
 
 func (x *DeleteChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[25]
+	mi := &file_dfs_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1482,7 +2001,7 @@ func (x *DeleteChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteChunkResponse.ProtoReflect.Descriptor instead.
 func (*DeleteChunkResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{25}
+	return file_dfs_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *DeleteChunkResponse) GetOk() bool {
@@ -1518,7 +2037,7 @@ type RepairChunkRequest struct {
 
 func (x *RepairChunkRequest) Reset() {
 	*x = RepairChunkRequest{}
-	mi := &file_dfs_proto_msgTypes[26]
+	mi := &file_dfs_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1530,7 +2049,7 @@ func (x *RepairChunkRequest) String() string {
 func (*RepairChunkRequest) ProtoMessage() {}
 
 func (x *RepairChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[26]
+	mi := &file_dfs_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1543,7 +2062,7 @@ func (x *RepairChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepairChunkRequest.ProtoReflect.Descriptor instead.
 func (*RepairChunkRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{26}
+	return file_dfs_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *RepairChunkRequest) GetChunkInfo() *ChunkInfo {
@@ -1569,7 +2088,7 @@ type RepairChunkResponse struct {
 
 func (x *RepairChunkResponse) Reset() {
 	*x = RepairChunkResponse{}
-	mi := &file_dfs_proto_msgTypes[27]
+	mi := &file_dfs_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1581,7 +2100,7 @@ func (x *RepairChunkResponse) String() string {
 func (*RepairChunkResponse) ProtoMessage() {}
 
 func (x *RepairChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[27]
+	mi := &file_dfs_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1594,7 +2113,7 @@ func (x *RepairChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepairChunkResponse.ProtoReflect.Descriptor instead.
 func (*RepairChunkResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{27}
+	return file_dfs_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *RepairChunkResponse) GetOk() bool {
@@ -1637,7 +2156,7 @@ type ChunkLocationsRequest struct {
 
 func (x *ChunkLocationsRequest) Reset() {
 	*x = ChunkLocationsRequest{}
-	mi := &file_dfs_proto_msgTypes[28]
+	mi := &file_dfs_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1649,7 +2168,7 @@ func (x *ChunkLocationsRequest) String() string {
 func (*ChunkLocationsRequest) ProtoMessage() {}
 
 func (x *ChunkLocationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[28]
+	mi := &file_dfs_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1662,7 +2181,7 @@ func (x *ChunkLocationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChunkLocationsRequest.ProtoReflect.Descriptor instead.
 func (*ChunkLocationsRequest) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{28}
+	return file_dfs_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ChunkLocationsRequest) GetChunkInfo() *ChunkInfo {
@@ -1687,7 +2206,7 @@ type ChunkLocationsResponse struct {
 
 func (x *ChunkLocationsResponse) Reset() {
 	*x = ChunkLocationsResponse{}
-	mi := &file_dfs_proto_msgTypes[29]
+	mi := &file_dfs_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1699,7 +2218,7 @@ func (x *ChunkLocationsResponse) String() string {
 func (*ChunkLocationsResponse) ProtoMessage() {}
 
 func (x *ChunkLocationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[29]
+	mi := &file_dfs_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1712,7 +2231,7 @@ func (x *ChunkLocationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChunkLocationsResponse.ProtoReflect.Descriptor instead.
 func (*ChunkLocationsResponse) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{29}
+	return file_dfs_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ChunkLocationsResponse) GetOk() bool {
@@ -1756,6 +2275,10 @@ type Wrapper struct {
 	//	*Wrapper_StoreResponse
 	//	*Wrapper_RetrieveRequest
 	//	*Wrapper_RetrieveResponse
+	//	*Wrapper_StatFileRequest
+	//	*Wrapper_StatFileResponse
+	//	*Wrapper_GetInputSplitsRequest
+	//	*Wrapper_GetInputSplitsResponse
 	//	*Wrapper_DeleteRequest
 	//	*Wrapper_DeleteResponse
 	//	*Wrapper_ListRequest
@@ -1766,6 +2289,8 @@ type Wrapper struct {
 	//	*Wrapper_StoreChunkResponse
 	//	*Wrapper_RetrieveChunkRequest
 	//	*Wrapper_RetrieveChunkResponse
+	//	*Wrapper_ReadChunkRangeRequest
+	//	*Wrapper_ReadChunkRangeResponse
 	//	*Wrapper_DeleteChunkRequest
 	//	*Wrapper_DeleteChunkResponse
 	//	*Wrapper_RepairChunkRequest
@@ -1779,7 +2304,7 @@ type Wrapper struct {
 
 func (x *Wrapper) Reset() {
 	*x = Wrapper{}
-	mi := &file_dfs_proto_msgTypes[30]
+	mi := &file_dfs_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1791,7 +2316,7 @@ func (x *Wrapper) String() string {
 func (*Wrapper) ProtoMessage() {}
 
 func (x *Wrapper) ProtoReflect() protoreflect.Message {
-	mi := &file_dfs_proto_msgTypes[30]
+	mi := &file_dfs_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1804,7 +2329,7 @@ func (x *Wrapper) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Wrapper.ProtoReflect.Descriptor instead.
 func (*Wrapper) Descriptor() ([]byte, []int) {
-	return file_dfs_proto_rawDescGZIP(), []int{30}
+	return file_dfs_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *Wrapper) GetMsg() isWrapper_Msg {
@@ -1895,6 +2420,42 @@ func (x *Wrapper) GetRetrieveResponse() *RetrieveResponse {
 	return nil
 }
 
+func (x *Wrapper) GetStatFileRequest() *StatFileRequest {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_StatFileRequest); ok {
+			return x.StatFileRequest
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetStatFileResponse() *StatFileResponse {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_StatFileResponse); ok {
+			return x.StatFileResponse
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetGetInputSplitsRequest() *GetInputSplitsRequest {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_GetInputSplitsRequest); ok {
+			return x.GetInputSplitsRequest
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetGetInputSplitsResponse() *GetInputSplitsResponse {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_GetInputSplitsResponse); ok {
+			return x.GetInputSplitsResponse
+		}
+	}
+	return nil
+}
+
 func (x *Wrapper) GetDeleteRequest() *DeleteRequest {
 	if x != nil {
 		if x, ok := x.Msg.(*Wrapper_DeleteRequest); ok {
@@ -1980,6 +2541,24 @@ func (x *Wrapper) GetRetrieveChunkResponse() *RetrieveChunkResponse {
 	if x != nil {
 		if x, ok := x.Msg.(*Wrapper_RetrieveChunkResponse); ok {
 			return x.RetrieveChunkResponse
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetReadChunkRangeRequest() *ReadChunkRangeRequest {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_ReadChunkRangeRequest); ok {
+			return x.ReadChunkRangeRequest
+		}
+	}
+	return nil
+}
+
+func (x *Wrapper) GetReadChunkRangeResponse() *ReadChunkRangeResponse {
+	if x != nil {
+		if x, ok := x.Msg.(*Wrapper_ReadChunkRangeResponse); ok {
+			return x.ReadChunkRangeResponse
 		}
 	}
 	return nil
@@ -2081,71 +2660,95 @@ type Wrapper_RetrieveResponse struct {
 	RetrieveResponse *RetrieveResponse `protobuf:"bytes,9,opt,name=retrieve_response,json=retrieveResponse,proto3,oneof"`
 }
 
+type Wrapper_StatFileRequest struct {
+	StatFileRequest *StatFileRequest `protobuf:"bytes,10,opt,name=stat_file_request,json=statFileRequest,proto3,oneof"`
+}
+
+type Wrapper_StatFileResponse struct {
+	StatFileResponse *StatFileResponse `protobuf:"bytes,11,opt,name=stat_file_response,json=statFileResponse,proto3,oneof"`
+}
+
+type Wrapper_GetInputSplitsRequest struct {
+	GetInputSplitsRequest *GetInputSplitsRequest `protobuf:"bytes,12,opt,name=get_input_splits_request,json=getInputSplitsRequest,proto3,oneof"`
+}
+
+type Wrapper_GetInputSplitsResponse struct {
+	GetInputSplitsResponse *GetInputSplitsResponse `protobuf:"bytes,13,opt,name=get_input_splits_response,json=getInputSplitsResponse,proto3,oneof"`
+}
+
 type Wrapper_DeleteRequest struct {
-	DeleteRequest *DeleteRequest `protobuf:"bytes,10,opt,name=delete_request,json=deleteRequest,proto3,oneof"`
+	DeleteRequest *DeleteRequest `protobuf:"bytes,14,opt,name=delete_request,json=deleteRequest,proto3,oneof"`
 }
 
 type Wrapper_DeleteResponse struct {
-	DeleteResponse *DeleteResponse `protobuf:"bytes,11,opt,name=delete_response,json=deleteResponse,proto3,oneof"`
+	DeleteResponse *DeleteResponse `protobuf:"bytes,15,opt,name=delete_response,json=deleteResponse,proto3,oneof"`
 }
 
 type Wrapper_ListRequest struct {
-	ListRequest *ListRequest `protobuf:"bytes,12,opt,name=list_request,json=listRequest,proto3,oneof"`
+	ListRequest *ListRequest `protobuf:"bytes,16,opt,name=list_request,json=listRequest,proto3,oneof"`
 }
 
 type Wrapper_ListResponse struct {
-	ListResponse *ListResponse `protobuf:"bytes,13,opt,name=list_response,json=listResponse,proto3,oneof"`
+	ListResponse *ListResponse `protobuf:"bytes,17,opt,name=list_response,json=listResponse,proto3,oneof"`
 }
 
 type Wrapper_ClusterInfoRequest struct {
-	ClusterInfoRequest *ClusterInfoRequest `protobuf:"bytes,14,opt,name=cluster_info_request,json=clusterInfoRequest,proto3,oneof"`
+	ClusterInfoRequest *ClusterInfoRequest `protobuf:"bytes,18,opt,name=cluster_info_request,json=clusterInfoRequest,proto3,oneof"`
 }
 
 type Wrapper_ClusterInfoResponse struct {
-	ClusterInfoResponse *ClusterInfoResponse `protobuf:"bytes,15,opt,name=cluster_info_response,json=clusterInfoResponse,proto3,oneof"`
+	ClusterInfoResponse *ClusterInfoResponse `protobuf:"bytes,19,opt,name=cluster_info_response,json=clusterInfoResponse,proto3,oneof"`
 }
 
 type Wrapper_StoreChunkRequest struct {
 	// Client <-> Storage
-	StoreChunkRequest *StoreChunkRequest `protobuf:"bytes,16,opt,name=store_chunk_request,json=storeChunkRequest,proto3,oneof"`
+	StoreChunkRequest *StoreChunkRequest `protobuf:"bytes,20,opt,name=store_chunk_request,json=storeChunkRequest,proto3,oneof"`
 }
 
 type Wrapper_StoreChunkResponse struct {
-	StoreChunkResponse *StoreChunkResponse `protobuf:"bytes,17,opt,name=store_chunk_response,json=storeChunkResponse,proto3,oneof"`
+	StoreChunkResponse *StoreChunkResponse `protobuf:"bytes,21,opt,name=store_chunk_response,json=storeChunkResponse,proto3,oneof"`
 }
 
 type Wrapper_RetrieveChunkRequest struct {
-	RetrieveChunkRequest *RetrieveChunkRequest `protobuf:"bytes,18,opt,name=retrieve_chunk_request,json=retrieveChunkRequest,proto3,oneof"`
+	RetrieveChunkRequest *RetrieveChunkRequest `protobuf:"bytes,22,opt,name=retrieve_chunk_request,json=retrieveChunkRequest,proto3,oneof"`
 }
 
 type Wrapper_RetrieveChunkResponse struct {
-	RetrieveChunkResponse *RetrieveChunkResponse `protobuf:"bytes,19,opt,name=retrieve_chunk_response,json=retrieveChunkResponse,proto3,oneof"`
+	RetrieveChunkResponse *RetrieveChunkResponse `protobuf:"bytes,23,opt,name=retrieve_chunk_response,json=retrieveChunkResponse,proto3,oneof"`
+}
+
+type Wrapper_ReadChunkRangeRequest struct {
+	ReadChunkRangeRequest *ReadChunkRangeRequest `protobuf:"bytes,24,opt,name=read_chunk_range_request,json=readChunkRangeRequest,proto3,oneof"`
+}
+
+type Wrapper_ReadChunkRangeResponse struct {
+	ReadChunkRangeResponse *ReadChunkRangeResponse `protobuf:"bytes,25,opt,name=read_chunk_range_response,json=readChunkRangeResponse,proto3,oneof"`
 }
 
 type Wrapper_DeleteChunkRequest struct {
 	// Controller <-> Storage
-	DeleteChunkRequest *DeleteChunkRequest `protobuf:"bytes,20,opt,name=delete_chunk_request,json=deleteChunkRequest,proto3,oneof"`
+	DeleteChunkRequest *DeleteChunkRequest `protobuf:"bytes,26,opt,name=delete_chunk_request,json=deleteChunkRequest,proto3,oneof"`
 }
 
 type Wrapper_DeleteChunkResponse struct {
-	DeleteChunkResponse *DeleteChunkResponse `protobuf:"bytes,21,opt,name=delete_chunk_response,json=deleteChunkResponse,proto3,oneof"`
+	DeleteChunkResponse *DeleteChunkResponse `protobuf:"bytes,27,opt,name=delete_chunk_response,json=deleteChunkResponse,proto3,oneof"`
 }
 
 type Wrapper_RepairChunkRequest struct {
 	// Checksum validation
-	RepairChunkRequest *RepairChunkRequest `protobuf:"bytes,22,opt,name=repair_chunk_request,json=repairChunkRequest,proto3,oneof"`
+	RepairChunkRequest *RepairChunkRequest `protobuf:"bytes,28,opt,name=repair_chunk_request,json=repairChunkRequest,proto3,oneof"`
 }
 
 type Wrapper_RepairChunkResponse struct {
-	RepairChunkResponse *RepairChunkResponse `protobuf:"bytes,23,opt,name=repair_chunk_response,json=repairChunkResponse,proto3,oneof"`
+	RepairChunkResponse *RepairChunkResponse `protobuf:"bytes,29,opt,name=repair_chunk_response,json=repairChunkResponse,proto3,oneof"`
 }
 
 type Wrapper_ChunkLocationsRequest struct {
-	ChunkLocationsRequest *ChunkLocationsRequest `protobuf:"bytes,24,opt,name=chunk_locations_request,json=chunkLocationsRequest,proto3,oneof"`
+	ChunkLocationsRequest *ChunkLocationsRequest `protobuf:"bytes,30,opt,name=chunk_locations_request,json=chunkLocationsRequest,proto3,oneof"`
 }
 
 type Wrapper_ChunkLocationsResponse struct {
-	ChunkLocationsResponse *ChunkLocationsResponse `protobuf:"bytes,25,opt,name=chunk_locations_response,json=chunkLocationsResponse,proto3,oneof"`
+	ChunkLocationsResponse *ChunkLocationsResponse `protobuf:"bytes,31,opt,name=chunk_locations_response,json=chunkLocationsResponse,proto3,oneof"`
 }
 
 func (*Wrapper_RegisterRequest) isWrapper_Msg() {}
@@ -2166,6 +2769,14 @@ func (*Wrapper_RetrieveRequest) isWrapper_Msg() {}
 
 func (*Wrapper_RetrieveResponse) isWrapper_Msg() {}
 
+func (*Wrapper_StatFileRequest) isWrapper_Msg() {}
+
+func (*Wrapper_StatFileResponse) isWrapper_Msg() {}
+
+func (*Wrapper_GetInputSplitsRequest) isWrapper_Msg() {}
+
+func (*Wrapper_GetInputSplitsResponse) isWrapper_Msg() {}
+
 func (*Wrapper_DeleteRequest) isWrapper_Msg() {}
 
 func (*Wrapper_DeleteResponse) isWrapper_Msg() {}
@@ -2185,6 +2796,10 @@ func (*Wrapper_StoreChunkResponse) isWrapper_Msg() {}
 func (*Wrapper_RetrieveChunkRequest) isWrapper_Msg() {}
 
 func (*Wrapper_RetrieveChunkResponse) isWrapper_Msg() {}
+
+func (*Wrapper_ReadChunkRangeRequest) isWrapper_Msg() {}
+
+func (*Wrapper_ReadChunkRangeResponse) isWrapper_Msg() {}
 
 func (*Wrapper_DeleteChunkRequest) isWrapper_Msg() {}
 
@@ -2259,7 +2874,37 @@ const file_dfs_proto_rawDesc = "" +
 	"\x10RetrieveResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12+\n" +
-	"\tlocations\x18\x03 \x03(\v2\r.ChunkMappingR\tlocations\"+\n" +
+	"\tlocations\x18\x03 \x03(\v2\r.ChunkMappingR\tlocations\"-\n" +
+	"\x0fStatFileRequest\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\"\xb1\x01\n" +
+	"\x10StatFileResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1a\n" +
+	"\bfilename\x18\x03 \x01(\tR\bfilename\x12\x1b\n" +
+	"\tfile_size\x18\x04 \x01(\x04R\bfileSize\x12\x1d\n" +
+	"\n" +
+	"chunk_size\x18\x05 \x01(\x04R\tchunkSize\x12\x1f\n" +
+	"\vchunk_count\x18\x06 \x01(\rR\n" +
+	"chunkCount\"\xfe\x01\n" +
+	"\n" +
+	"InputSplit\x12\x1f\n" +
+	"\vsplit_index\x18\x01 \x01(\rR\n" +
+	"splitIndex\x12\x1a\n" +
+	"\bfilename\x18\x02 \x01(\tR\bfilename\x12!\n" +
+	"\fstart_offset\x18\x03 \x01(\x04R\vstartOffset\x120\n" +
+	"\x14end_offset_exclusive\x18\x04 \x01(\x04R\x12endOffsetExclusive\x12*\n" +
+	"\x11start_line_number\x18\x05 \x01(\x04R\x0fstartLineNumber\x122\n" +
+	"\x0fpreferred_nodes\x18\x06 \x03(\v2\t.NodeInfoR\x0epreferredNodes\"\x97\x01\n" +
+	"\x15GetInputSplitsRequest\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\x12)\n" +
+	"\n" +
+	"split_mode\x18\x02 \x01(\x0e2\n" +
+	".SplitModeR\tsplitMode\x127\n" +
+	"\x18desired_split_size_bytes\x18\x03 \x01(\x04R\x15desiredSplitSizeBytes\"c\n" +
+	"\x16GetInputSplitsResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12#\n" +
+	"\x06splits\x18\x03 \x03(\v2\v.InputSplitR\x06splits\"+\n" +
 	"\rDeleteRequest\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\"6\n" +
 	"\x0eDeleteResponse\x12\x0e\n" +
@@ -2310,7 +2955,21 @@ const file_dfs_proto_rawDesc = "" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1d\n" +
 	"\n" +
-	"chunk_data\x18\x03 \x01(\fR\tchunkData\"?\n" +
+	"chunk_data\x18\x03 \x01(\fR\tchunkData\"}\n" +
+	"\x15ReadChunkRangeRequest\x12)\n" +
+	"\n" +
+	"chunk_info\x18\x01 \x01(\v2\n" +
+	".ChunkInfoR\tchunkInfo\x12!\n" +
+	"\fchunk_offset\x18\x02 \x01(\x04R\vchunkOffset\x12\x16\n" +
+	"\x06length\x18\x03 \x01(\x04R\x06length\"\x88\x01\n" +
+	"\x16ReadChunkRangeResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12)\n" +
+	"\n" +
+	"chunk_info\x18\x03 \x01(\v2\n" +
+	".ChunkInfoR\tchunkInfo\x12\x1d\n" +
+	"\n" +
+	"chunk_data\x18\x04 \x01(\fR\tchunkData\"?\n" +
 	"\x12DeleteChunkRequest\x12)\n" +
 	"\n" +
 	"chunk_info\x18\x01 \x01(\v2\n" +
@@ -2343,7 +3002,7 @@ const file_dfs_proto_rawDesc = "" +
 	"\n" +
 	"chunk_info\x18\x03 \x01(\v2\n" +
 	".ChunkInfoR\tchunkInfo\x12\x1f\n" +
-	"\x05nodes\x18\x04 \x03(\v2\t.NodeInfoR\x05nodes\"\xa8\r\n" +
+	"\x05nodes\x18\x04 \x03(\v2\t.NodeInfoR\x05nodes\"\xfd\x10\n" +
 	"\aWrapper\x12=\n" +
 	"\x10register_request\x18\x01 \x01(\v2\x10.RegisterRequestH\x00R\x0fregisterRequest\x12@\n" +
 	"\x11register_response\x18\x02 \x01(\v2\x11.RegisterResponseH\x00R\x10registerResponse\x12*\n" +
@@ -2354,25 +3013,36 @@ const file_dfs_proto_rawDesc = "" +
 	"\rstore_request\x18\x06 \x01(\v2\r.StoreRequestH\x00R\fstoreRequest\x127\n" +
 	"\x0estore_response\x18\a \x01(\v2\x0e.StoreResponseH\x00R\rstoreResponse\x12=\n" +
 	"\x10retrieve_request\x18\b \x01(\v2\x10.RetrieveRequestH\x00R\x0fretrieveRequest\x12@\n" +
-	"\x11retrieve_response\x18\t \x01(\v2\x11.RetrieveResponseH\x00R\x10retrieveResponse\x127\n" +
-	"\x0edelete_request\x18\n" +
-	" \x01(\v2\x0e.DeleteRequestH\x00R\rdeleteRequest\x12:\n" +
-	"\x0fdelete_response\x18\v \x01(\v2\x0f.DeleteResponseH\x00R\x0edeleteResponse\x121\n" +
-	"\flist_request\x18\f \x01(\v2\f.ListRequestH\x00R\vlistRequest\x124\n" +
-	"\rlist_response\x18\r \x01(\v2\r.ListResponseH\x00R\flistResponse\x12G\n" +
-	"\x14cluster_info_request\x18\x0e \x01(\v2\x13.ClusterInfoRequestH\x00R\x12clusterInfoRequest\x12J\n" +
-	"\x15cluster_info_response\x18\x0f \x01(\v2\x14.ClusterInfoResponseH\x00R\x13clusterInfoResponse\x12D\n" +
-	"\x13store_chunk_request\x18\x10 \x01(\v2\x12.StoreChunkRequestH\x00R\x11storeChunkRequest\x12G\n" +
-	"\x14store_chunk_response\x18\x11 \x01(\v2\x13.StoreChunkResponseH\x00R\x12storeChunkResponse\x12M\n" +
-	"\x16retrieve_chunk_request\x18\x12 \x01(\v2\x15.RetrieveChunkRequestH\x00R\x14retrieveChunkRequest\x12P\n" +
-	"\x17retrieve_chunk_response\x18\x13 \x01(\v2\x16.RetrieveChunkResponseH\x00R\x15retrieveChunkResponse\x12G\n" +
-	"\x14delete_chunk_request\x18\x14 \x01(\v2\x13.DeleteChunkRequestH\x00R\x12deleteChunkRequest\x12J\n" +
-	"\x15delete_chunk_response\x18\x15 \x01(\v2\x14.DeleteChunkResponseH\x00R\x13deleteChunkResponse\x12G\n" +
-	"\x14repair_chunk_request\x18\x16 \x01(\v2\x13.RepairChunkRequestH\x00R\x12repairChunkRequest\x12J\n" +
-	"\x15repair_chunk_response\x18\x17 \x01(\v2\x14.RepairChunkResponseH\x00R\x13repairChunkResponse\x12P\n" +
-	"\x17chunk_locations_request\x18\x18 \x01(\v2\x16.ChunkLocationsRequestH\x00R\x15chunkLocationsRequest\x12S\n" +
-	"\x18chunk_locations_response\x18\x19 \x01(\v2\x17.ChunkLocationsResponseH\x00R\x16chunkLocationsResponseB\x05\n" +
-	"\x03msgB@Z>github.com/erwannd/p1-distributed-filesystem/messages;messagesb\x06proto3"
+	"\x11retrieve_response\x18\t \x01(\v2\x11.RetrieveResponseH\x00R\x10retrieveResponse\x12>\n" +
+	"\x11stat_file_request\x18\n" +
+	" \x01(\v2\x10.StatFileRequestH\x00R\x0fstatFileRequest\x12A\n" +
+	"\x12stat_file_response\x18\v \x01(\v2\x11.StatFileResponseH\x00R\x10statFileResponse\x12Q\n" +
+	"\x18get_input_splits_request\x18\f \x01(\v2\x16.GetInputSplitsRequestH\x00R\x15getInputSplitsRequest\x12T\n" +
+	"\x19get_input_splits_response\x18\r \x01(\v2\x17.GetInputSplitsResponseH\x00R\x16getInputSplitsResponse\x127\n" +
+	"\x0edelete_request\x18\x0e \x01(\v2\x0e.DeleteRequestH\x00R\rdeleteRequest\x12:\n" +
+	"\x0fdelete_response\x18\x0f \x01(\v2\x0f.DeleteResponseH\x00R\x0edeleteResponse\x121\n" +
+	"\flist_request\x18\x10 \x01(\v2\f.ListRequestH\x00R\vlistRequest\x124\n" +
+	"\rlist_response\x18\x11 \x01(\v2\r.ListResponseH\x00R\flistResponse\x12G\n" +
+	"\x14cluster_info_request\x18\x12 \x01(\v2\x13.ClusterInfoRequestH\x00R\x12clusterInfoRequest\x12J\n" +
+	"\x15cluster_info_response\x18\x13 \x01(\v2\x14.ClusterInfoResponseH\x00R\x13clusterInfoResponse\x12D\n" +
+	"\x13store_chunk_request\x18\x14 \x01(\v2\x12.StoreChunkRequestH\x00R\x11storeChunkRequest\x12G\n" +
+	"\x14store_chunk_response\x18\x15 \x01(\v2\x13.StoreChunkResponseH\x00R\x12storeChunkResponse\x12M\n" +
+	"\x16retrieve_chunk_request\x18\x16 \x01(\v2\x15.RetrieveChunkRequestH\x00R\x14retrieveChunkRequest\x12P\n" +
+	"\x17retrieve_chunk_response\x18\x17 \x01(\v2\x16.RetrieveChunkResponseH\x00R\x15retrieveChunkResponse\x12Q\n" +
+	"\x18read_chunk_range_request\x18\x18 \x01(\v2\x16.ReadChunkRangeRequestH\x00R\x15readChunkRangeRequest\x12T\n" +
+	"\x19read_chunk_range_response\x18\x19 \x01(\v2\x17.ReadChunkRangeResponseH\x00R\x16readChunkRangeResponse\x12G\n" +
+	"\x14delete_chunk_request\x18\x1a \x01(\v2\x13.DeleteChunkRequestH\x00R\x12deleteChunkRequest\x12J\n" +
+	"\x15delete_chunk_response\x18\x1b \x01(\v2\x14.DeleteChunkResponseH\x00R\x13deleteChunkResponse\x12G\n" +
+	"\x14repair_chunk_request\x18\x1c \x01(\v2\x13.RepairChunkRequestH\x00R\x12repairChunkRequest\x12J\n" +
+	"\x15repair_chunk_response\x18\x1d \x01(\v2\x14.RepairChunkResponseH\x00R\x13repairChunkResponse\x12P\n" +
+	"\x17chunk_locations_request\x18\x1e \x01(\v2\x16.ChunkLocationsRequestH\x00R\x15chunkLocationsRequest\x12S\n" +
+	"\x18chunk_locations_response\x18\x1f \x01(\v2\x17.ChunkLocationsResponseH\x00R\x16chunkLocationsResponseB\x05\n" +
+	"\x03msg*J\n" +
+	"\tSplitMode\x12\x1a\n" +
+	"\x16SPLIT_MODE_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"TEXT_LINES\x10\x01\x12\x11\n" +
+	"\rBINARY_CHUNKS\x10\x02B@Z>github.com/erwannd/p1-distributed-filesystem/messages;messagesb\x06proto3"
 
 var (
 	file_dfs_proto_rawDescOnce sync.Once
@@ -2386,93 +3056,113 @@ func file_dfs_proto_rawDescGZIP() []byte {
 	return file_dfs_proto_rawDescData
 }
 
-var file_dfs_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_dfs_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_dfs_proto_msgTypes = make([]protoimpl.MessageInfo, 38)
 var file_dfs_proto_goTypes = []any{
-	(*RegisterRequest)(nil),        // 0: RegisterRequest
-	(*RegisterResponse)(nil),       // 1: RegisterResponse
-	(*Heartbeat)(nil),              // 2: Heartbeat
-	(*HeartbeatResponse)(nil),      // 3: HeartbeatResponse
-	(*ReplicateRequest)(nil),       // 4: ReplicateRequest
-	(*ChunkInfo)(nil),              // 5: ChunkInfo
-	(*NodeInfo)(nil),               // 6: NodeInfo
-	(*ChunkMapping)(nil),           // 7: ChunkMapping
-	(*StoreRequest)(nil),           // 8: StoreRequest
-	(*StoreResponse)(nil),          // 9: StoreResponse
-	(*RetrieveRequest)(nil),        // 10: RetrieveRequest
-	(*RetrieveResponse)(nil),       // 11: RetrieveResponse
-	(*DeleteRequest)(nil),          // 12: DeleteRequest
-	(*DeleteResponse)(nil),         // 13: DeleteResponse
-	(*ListRequest)(nil),            // 14: ListRequest
-	(*FileInfo)(nil),               // 15: FileInfo
-	(*ListResponse)(nil),           // 16: ListResponse
-	(*ClusterInfoRequest)(nil),     // 17: ClusterInfoRequest
-	(*NodeStats)(nil),              // 18: NodeStats
-	(*ClusterInfoResponse)(nil),    // 19: ClusterInfoResponse
-	(*StoreChunkRequest)(nil),      // 20: StoreChunkRequest
-	(*StoreChunkResponse)(nil),     // 21: StoreChunkResponse
-	(*RetrieveChunkRequest)(nil),   // 22: RetrieveChunkRequest
-	(*RetrieveChunkResponse)(nil),  // 23: RetrieveChunkResponse
-	(*DeleteChunkRequest)(nil),     // 24: DeleteChunkRequest
-	(*DeleteChunkResponse)(nil),    // 25: DeleteChunkResponse
-	(*RepairChunkRequest)(nil),     // 26: RepairChunkRequest
-	(*RepairChunkResponse)(nil),    // 27: RepairChunkResponse
-	(*ChunkLocationsRequest)(nil),  // 28: ChunkLocationsRequest
-	(*ChunkLocationsResponse)(nil), // 29: ChunkLocationsResponse
-	(*Wrapper)(nil),                // 30: Wrapper
+	(SplitMode)(0),                 // 0: SplitMode
+	(*RegisterRequest)(nil),        // 1: RegisterRequest
+	(*RegisterResponse)(nil),       // 2: RegisterResponse
+	(*Heartbeat)(nil),              // 3: Heartbeat
+	(*HeartbeatResponse)(nil),      // 4: HeartbeatResponse
+	(*ReplicateRequest)(nil),       // 5: ReplicateRequest
+	(*ChunkInfo)(nil),              // 6: ChunkInfo
+	(*NodeInfo)(nil),               // 7: NodeInfo
+	(*ChunkMapping)(nil),           // 8: ChunkMapping
+	(*StoreRequest)(nil),           // 9: StoreRequest
+	(*StoreResponse)(nil),          // 10: StoreResponse
+	(*RetrieveRequest)(nil),        // 11: RetrieveRequest
+	(*RetrieveResponse)(nil),       // 12: RetrieveResponse
+	(*StatFileRequest)(nil),        // 13: StatFileRequest
+	(*StatFileResponse)(nil),       // 14: StatFileResponse
+	(*InputSplit)(nil),             // 15: InputSplit
+	(*GetInputSplitsRequest)(nil),  // 16: GetInputSplitsRequest
+	(*GetInputSplitsResponse)(nil), // 17: GetInputSplitsResponse
+	(*DeleteRequest)(nil),          // 18: DeleteRequest
+	(*DeleteResponse)(nil),         // 19: DeleteResponse
+	(*ListRequest)(nil),            // 20: ListRequest
+	(*FileInfo)(nil),               // 21: FileInfo
+	(*ListResponse)(nil),           // 22: ListResponse
+	(*ClusterInfoRequest)(nil),     // 23: ClusterInfoRequest
+	(*NodeStats)(nil),              // 24: NodeStats
+	(*ClusterInfoResponse)(nil),    // 25: ClusterInfoResponse
+	(*StoreChunkRequest)(nil),      // 26: StoreChunkRequest
+	(*StoreChunkResponse)(nil),     // 27: StoreChunkResponse
+	(*RetrieveChunkRequest)(nil),   // 28: RetrieveChunkRequest
+	(*RetrieveChunkResponse)(nil),  // 29: RetrieveChunkResponse
+	(*ReadChunkRangeRequest)(nil),  // 30: ReadChunkRangeRequest
+	(*ReadChunkRangeResponse)(nil), // 31: ReadChunkRangeResponse
+	(*DeleteChunkRequest)(nil),     // 32: DeleteChunkRequest
+	(*DeleteChunkResponse)(nil),    // 33: DeleteChunkResponse
+	(*RepairChunkRequest)(nil),     // 34: RepairChunkRequest
+	(*RepairChunkResponse)(nil),    // 35: RepairChunkResponse
+	(*ChunkLocationsRequest)(nil),  // 36: ChunkLocationsRequest
+	(*ChunkLocationsResponse)(nil), // 37: ChunkLocationsResponse
+	(*Wrapper)(nil),                // 38: Wrapper
 }
 var file_dfs_proto_depIdxs = []int32{
-	5,  // 0: Heartbeat.new_chunks:type_name -> ChunkInfo
-	4,  // 1: HeartbeatResponse.replicate_request:type_name -> ReplicateRequest
-	5,  // 2: ReplicateRequest.chunk_info:type_name -> ChunkInfo
-	5,  // 3: ChunkMapping.chunk_info:type_name -> ChunkInfo
-	6,  // 4: ChunkMapping.nodes:type_name -> NodeInfo
-	7,  // 5: StoreResponse.destinations:type_name -> ChunkMapping
-	7,  // 6: RetrieveResponse.locations:type_name -> ChunkMapping
-	15, // 7: ListResponse.files:type_name -> FileInfo
-	6,  // 8: NodeStats.node_info:type_name -> NodeInfo
-	18, // 9: ClusterInfoResponse.node_stats:type_name -> NodeStats
-	5,  // 10: StoreChunkRequest.chunk_info:type_name -> ChunkInfo
-	6,  // 11: StoreChunkRequest.pipeline:type_name -> NodeInfo
-	5,  // 12: StoreChunkResponse.chunk_info:type_name -> ChunkInfo
-	5,  // 13: RetrieveChunkRequest.chunk_info:type_name -> ChunkInfo
-	6,  // 14: RetrieveChunkRequest.replica_hints:type_name -> NodeInfo
-	5,  // 15: DeleteChunkRequest.chunk_info:type_name -> ChunkInfo
-	5,  // 16: DeleteChunkResponse.chunk_info:type_name -> ChunkInfo
-	5,  // 17: RepairChunkRequest.chunk_info:type_name -> ChunkInfo
-	5,  // 18: RepairChunkResponse.chunk_info:type_name -> ChunkInfo
-	5,  // 19: ChunkLocationsRequest.chunk_info:type_name -> ChunkInfo
-	5,  // 20: ChunkLocationsResponse.chunk_info:type_name -> ChunkInfo
-	6,  // 21: ChunkLocationsResponse.nodes:type_name -> NodeInfo
-	0,  // 22: Wrapper.register_request:type_name -> RegisterRequest
-	1,  // 23: Wrapper.register_response:type_name -> RegisterResponse
-	2,  // 24: Wrapper.heartbeat:type_name -> Heartbeat
-	3,  // 25: Wrapper.heartbeat_response:type_name -> HeartbeatResponse
-	4,  // 26: Wrapper.replicate_request:type_name -> ReplicateRequest
-	8,  // 27: Wrapper.store_request:type_name -> StoreRequest
-	9,  // 28: Wrapper.store_response:type_name -> StoreResponse
-	10, // 29: Wrapper.retrieve_request:type_name -> RetrieveRequest
-	11, // 30: Wrapper.retrieve_response:type_name -> RetrieveResponse
-	12, // 31: Wrapper.delete_request:type_name -> DeleteRequest
-	13, // 32: Wrapper.delete_response:type_name -> DeleteResponse
-	14, // 33: Wrapper.list_request:type_name -> ListRequest
-	16, // 34: Wrapper.list_response:type_name -> ListResponse
-	17, // 35: Wrapper.cluster_info_request:type_name -> ClusterInfoRequest
-	19, // 36: Wrapper.cluster_info_response:type_name -> ClusterInfoResponse
-	20, // 37: Wrapper.store_chunk_request:type_name -> StoreChunkRequest
-	21, // 38: Wrapper.store_chunk_response:type_name -> StoreChunkResponse
-	22, // 39: Wrapper.retrieve_chunk_request:type_name -> RetrieveChunkRequest
-	23, // 40: Wrapper.retrieve_chunk_response:type_name -> RetrieveChunkResponse
-	24, // 41: Wrapper.delete_chunk_request:type_name -> DeleteChunkRequest
-	25, // 42: Wrapper.delete_chunk_response:type_name -> DeleteChunkResponse
-	26, // 43: Wrapper.repair_chunk_request:type_name -> RepairChunkRequest
-	27, // 44: Wrapper.repair_chunk_response:type_name -> RepairChunkResponse
-	28, // 45: Wrapper.chunk_locations_request:type_name -> ChunkLocationsRequest
-	29, // 46: Wrapper.chunk_locations_response:type_name -> ChunkLocationsResponse
-	47, // [47:47] is the sub-list for method output_type
-	47, // [47:47] is the sub-list for method input_type
-	47, // [47:47] is the sub-list for extension type_name
-	47, // [47:47] is the sub-list for extension extendee
-	0,  // [0:47] is the sub-list for field type_name
+	6,  // 0: Heartbeat.new_chunks:type_name -> ChunkInfo
+	5,  // 1: HeartbeatResponse.replicate_request:type_name -> ReplicateRequest
+	6,  // 2: ReplicateRequest.chunk_info:type_name -> ChunkInfo
+	6,  // 3: ChunkMapping.chunk_info:type_name -> ChunkInfo
+	7,  // 4: ChunkMapping.nodes:type_name -> NodeInfo
+	8,  // 5: StoreResponse.destinations:type_name -> ChunkMapping
+	8,  // 6: RetrieveResponse.locations:type_name -> ChunkMapping
+	7,  // 7: InputSplit.preferred_nodes:type_name -> NodeInfo
+	0,  // 8: GetInputSplitsRequest.split_mode:type_name -> SplitMode
+	15, // 9: GetInputSplitsResponse.splits:type_name -> InputSplit
+	21, // 10: ListResponse.files:type_name -> FileInfo
+	7,  // 11: NodeStats.node_info:type_name -> NodeInfo
+	24, // 12: ClusterInfoResponse.node_stats:type_name -> NodeStats
+	6,  // 13: StoreChunkRequest.chunk_info:type_name -> ChunkInfo
+	7,  // 14: StoreChunkRequest.pipeline:type_name -> NodeInfo
+	6,  // 15: StoreChunkResponse.chunk_info:type_name -> ChunkInfo
+	6,  // 16: RetrieveChunkRequest.chunk_info:type_name -> ChunkInfo
+	7,  // 17: RetrieveChunkRequest.replica_hints:type_name -> NodeInfo
+	6,  // 18: ReadChunkRangeRequest.chunk_info:type_name -> ChunkInfo
+	6,  // 19: ReadChunkRangeResponse.chunk_info:type_name -> ChunkInfo
+	6,  // 20: DeleteChunkRequest.chunk_info:type_name -> ChunkInfo
+	6,  // 21: DeleteChunkResponse.chunk_info:type_name -> ChunkInfo
+	6,  // 22: RepairChunkRequest.chunk_info:type_name -> ChunkInfo
+	6,  // 23: RepairChunkResponse.chunk_info:type_name -> ChunkInfo
+	6,  // 24: ChunkLocationsRequest.chunk_info:type_name -> ChunkInfo
+	6,  // 25: ChunkLocationsResponse.chunk_info:type_name -> ChunkInfo
+	7,  // 26: ChunkLocationsResponse.nodes:type_name -> NodeInfo
+	1,  // 27: Wrapper.register_request:type_name -> RegisterRequest
+	2,  // 28: Wrapper.register_response:type_name -> RegisterResponse
+	3,  // 29: Wrapper.heartbeat:type_name -> Heartbeat
+	4,  // 30: Wrapper.heartbeat_response:type_name -> HeartbeatResponse
+	5,  // 31: Wrapper.replicate_request:type_name -> ReplicateRequest
+	9,  // 32: Wrapper.store_request:type_name -> StoreRequest
+	10, // 33: Wrapper.store_response:type_name -> StoreResponse
+	11, // 34: Wrapper.retrieve_request:type_name -> RetrieveRequest
+	12, // 35: Wrapper.retrieve_response:type_name -> RetrieveResponse
+	13, // 36: Wrapper.stat_file_request:type_name -> StatFileRequest
+	14, // 37: Wrapper.stat_file_response:type_name -> StatFileResponse
+	16, // 38: Wrapper.get_input_splits_request:type_name -> GetInputSplitsRequest
+	17, // 39: Wrapper.get_input_splits_response:type_name -> GetInputSplitsResponse
+	18, // 40: Wrapper.delete_request:type_name -> DeleteRequest
+	19, // 41: Wrapper.delete_response:type_name -> DeleteResponse
+	20, // 42: Wrapper.list_request:type_name -> ListRequest
+	22, // 43: Wrapper.list_response:type_name -> ListResponse
+	23, // 44: Wrapper.cluster_info_request:type_name -> ClusterInfoRequest
+	25, // 45: Wrapper.cluster_info_response:type_name -> ClusterInfoResponse
+	26, // 46: Wrapper.store_chunk_request:type_name -> StoreChunkRequest
+	27, // 47: Wrapper.store_chunk_response:type_name -> StoreChunkResponse
+	28, // 48: Wrapper.retrieve_chunk_request:type_name -> RetrieveChunkRequest
+	29, // 49: Wrapper.retrieve_chunk_response:type_name -> RetrieveChunkResponse
+	30, // 50: Wrapper.read_chunk_range_request:type_name -> ReadChunkRangeRequest
+	31, // 51: Wrapper.read_chunk_range_response:type_name -> ReadChunkRangeResponse
+	32, // 52: Wrapper.delete_chunk_request:type_name -> DeleteChunkRequest
+	33, // 53: Wrapper.delete_chunk_response:type_name -> DeleteChunkResponse
+	34, // 54: Wrapper.repair_chunk_request:type_name -> RepairChunkRequest
+	35, // 55: Wrapper.repair_chunk_response:type_name -> RepairChunkResponse
+	36, // 56: Wrapper.chunk_locations_request:type_name -> ChunkLocationsRequest
+	37, // 57: Wrapper.chunk_locations_response:type_name -> ChunkLocationsResponse
+	58, // [58:58] is the sub-list for method output_type
+	58, // [58:58] is the sub-list for method input_type
+	58, // [58:58] is the sub-list for extension type_name
+	58, // [58:58] is the sub-list for extension extendee
+	0,  // [0:58] is the sub-list for field type_name
 }
 
 func init() { file_dfs_proto_init() }
@@ -2480,7 +3170,7 @@ func file_dfs_proto_init() {
 	if File_dfs_proto != nil {
 		return
 	}
-	file_dfs_proto_msgTypes[30].OneofWrappers = []any{
+	file_dfs_proto_msgTypes[37].OneofWrappers = []any{
 		(*Wrapper_RegisterRequest)(nil),
 		(*Wrapper_RegisterResponse)(nil),
 		(*Wrapper_Heartbeat)(nil),
@@ -2490,6 +3180,10 @@ func file_dfs_proto_init() {
 		(*Wrapper_StoreResponse)(nil),
 		(*Wrapper_RetrieveRequest)(nil),
 		(*Wrapper_RetrieveResponse)(nil),
+		(*Wrapper_StatFileRequest)(nil),
+		(*Wrapper_StatFileResponse)(nil),
+		(*Wrapper_GetInputSplitsRequest)(nil),
+		(*Wrapper_GetInputSplitsResponse)(nil),
 		(*Wrapper_DeleteRequest)(nil),
 		(*Wrapper_DeleteResponse)(nil),
 		(*Wrapper_ListRequest)(nil),
@@ -2500,6 +3194,8 @@ func file_dfs_proto_init() {
 		(*Wrapper_StoreChunkResponse)(nil),
 		(*Wrapper_RetrieveChunkRequest)(nil),
 		(*Wrapper_RetrieveChunkResponse)(nil),
+		(*Wrapper_ReadChunkRangeRequest)(nil),
+		(*Wrapper_ReadChunkRangeResponse)(nil),
 		(*Wrapper_DeleteChunkRequest)(nil),
 		(*Wrapper_DeleteChunkResponse)(nil),
 		(*Wrapper_RepairChunkRequest)(nil),
@@ -2512,13 +3208,14 @@ func file_dfs_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_dfs_proto_rawDesc), len(file_dfs_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   31,
+			NumEnums:      1,
+			NumMessages:   38,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_dfs_proto_goTypes,
 		DependencyIndexes: file_dfs_proto_depIdxs,
+		EnumInfos:         file_dfs_proto_enumTypes,
 		MessageInfos:      file_dfs_proto_msgTypes,
 	}.Build()
 	File_dfs_proto = out.File
