@@ -243,12 +243,44 @@ func (client *Client) retrieve(filename string, outputDir string) error {
 		return fmt.Errorf("controller rejected retrieve: %s", resp.Error)
 	}
 
-	// 4. Fetch chunks (parallel)
-	// `chunks` for a large file this holds all chunk data in memory simultaneously
-	// An alternative is to write each chunk to a temp file as it arrives, then combine
+	// RetrieveResponse gives chunk placement, while StatFile provides the stable
+	// file_size/chunk_size metadata needed for random-access reassembly.
+	fileSize, chunkSize, err := client.statFile(filename)
+	if err != nil {
+		return fmt.Errorf("failed to stat file before retrieve: %w", err)
+	}
+
+	// 4. Fetch chunks in parallel, but write each chunk directly into one
+	// temporary output file. This keeps memory bounded by chunk size rather than
+	// total file size.
 	chunkCount := len(resp.Locations)
-	chunks := make([][]byte, chunkCount) // store chunks in order
 	errors := make([]error, chunkCount)
+
+	outputPath := filepath.Join(outputDir, filename)
+	tempPath := outputPath + ".tmp"
+
+	outFile, err := os.Create(tempPath)
+	if err != nil {
+		return fmt.Errorf("failed to create temp output file: %w", err)
+	}
+	defer func() {
+		if outFile != nil {
+			_ = outFile.Close()
+		}
+	}()
+	defer func() {
+		// If retrieve fails before rename, leave no partial output behind.
+		_ = os.Remove(tempPath)
+	}()
+
+	// Pre-size the temp file when metadata is available. This is not required
+	// for correctness, but it makes the final layout explicit before concurrent
+	// WriteAt calls begin.
+	if fileSize > 0 {
+		if err := outFile.Truncate(int64(fileSize)); err != nil {
+			return fmt.Errorf("failed to size temp output file: %w", err)
+		}
+	}
 
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, client.maxConcurrent)
@@ -265,7 +297,12 @@ func (client *Client) retrieve(filename string, outputDir string) error {
 				errors[idx] = err
 				return
 			}
-			chunks[idx] = data // store at correct index — order preserved
+
+			offset := int64(loc.ChunkInfo.ChunkIndex) * int64(chunkSize)
+			if _, err := outFile.WriteAt(data, offset); err != nil {
+				errors[idx] = fmt.Errorf("failed to write chunk %d at offset %d: %w", idx, offset, err)
+				return
+			}
 		}(i, location)
 	}
 	wg.Wait()
@@ -277,22 +314,52 @@ func (client *Client) retrieve(filename string, outputDir string) error {
 		}
 	}
 
-	// 6. Reassemble in order, then write to disk
-	outputPath := filepath.Join(outputDir, filename)
-	outFile, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
+	if err := outFile.Sync(); err != nil {
+		return fmt.Errorf("failed to flush output file: %w", err)
 	}
-	defer outFile.Close()
+	if err := outFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp output file: %w", err)
+	}
+	outFile = nil
 
-	for i, chunk := range chunks {
-		if _, err := outFile.Write(chunk); err != nil {
-			return fmt.Errorf("failed to write chunk %d: %w", i, err)
-		}
+	if err := os.Rename(tempPath, outputPath); err != nil {
+		return fmt.Errorf("failed to finalize output file: %w", err)
 	}
 
 	log.Printf("[Client] Retrieved %s -> %s", filename, outputPath)
 	return nil
+}
+
+func (client *Client) statFile(filename string) (uint64, uint64, error) {
+	handler, err := client.connectToController()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to connect to controller: %w", err)
+	}
+	defer handler.Close()
+
+	req := &messages.Wrapper{
+		Msg: &messages.Wrapper_StatFileRequest{
+			StatFileRequest: &messages.StatFileRequest{
+				Filename: filename,
+			},
+		},
+	}
+	if err := handler.Send(req); err != nil {
+		return 0, 0, fmt.Errorf("failed to send StatFileRequest: %w", err)
+	}
+
+	wrapper, err := handler.Receive()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to receive StatFileResponse: %w", err)
+	}
+	resp := wrapper.Msg.(*messages.Wrapper_StatFileResponse).StatFileResponse
+	if !resp.Ok {
+		return 0, 0, fmt.Errorf("stat failed: %s", resp.Error)
+	}
+	if resp.ChunkSize == 0 {
+		return 0, 0, fmt.Errorf("stat returned chunk_size=0 for %s", filename)
+	}
+	return resp.FileSize, resp.ChunkSize, nil
 }
 
 /**
