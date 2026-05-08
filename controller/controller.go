@@ -231,15 +231,42 @@ func handleHeartbeat(controller *Controller, msg *messages.Heartbeat, handler *m
  * Handle Client's store request.
  */
 func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, handler *messages.MessageHandler) {
-	// Build destinations first; selectNodes manages its own locking because it
-	// advances the round-robin cursor as each chunk is assigned.
+	controller.mu.Lock()
+	defer controller.mu.Unlock()
+
+	_, exists := controller.files[msg.Filename]
+	_, pendingExists := controller.pendingFiles[msg.Filename]
+	if exists || pendingExists {
+		resp := &messages.Wrapper{
+			Msg: &messages.Wrapper_StoreResponse{
+				StoreResponse: &messages.StoreResponse{
+					Ok:    false,
+					Error: fmt.Sprintf("file %s already exists", msg.Filename),
+				},
+			},
+		}
+		if err := handler.Send(resp); err != nil {
+			log.Printf("[Controller] Failed to send error StoreResponse: %v", err)
+		}
+		return
+	}
+
+	// Plan one large store request against a shrinking in-memory capacity view
+	// so later chunks cannot be assigned onto space already consumed by earlier
+	// chunk placements from the same file.
+	available := make(map[uint32]uint64, len(controller.nodes))
+	for nodeID, node := range controller.nodes {
+		available[nodeID] = node.FreeSpace
+	}
+	placementCursor := controller.nextPlacementIndex
+
 	destinations := make([]*messages.ChunkMapping, msg.ChunkCount)
 	chunkMetas := make(map[uint32]*ChunkMetadata)
 	pendingStores := make(map[uint32]map[string]*NodeInfo)
 
 	for i := uint32(0); i < msg.ChunkCount; i++ {
 		chunkSize := chunkSizeForIndex(msg.FileSize, msg.ChunkSize, msg.ChunkCount, i)
-		nodes, err := controller.selectNodes(int(utils.ReplicationFactor), chunkSize)
+		nodes, nextCursor, err := controller.selectNodesForStoreLocked(int(utils.ReplicationFactor), chunkSize, available, placementCursor)
 		if err != nil {
 			resp := &messages.Wrapper{
 				Msg: &messages.Wrapper_StoreResponse{
@@ -254,6 +281,7 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 			}
 			return
 		}
+		placementCursor = nextCursor
 
 		nodeInfos := make([]*messages.NodeInfo, len(nodes))
 		pendingNodes := make(map[string]*NodeInfo)
@@ -279,38 +307,19 @@ func handleStoreRequest(controller *Controller, msg *messages.StoreRequest, hand
 		pendingStores[i] = pendingNodes
 	}
 
-	// Atomic check + store under write lock.
+	controller.nextPlacementIndex = placementCursor
+
+	// Atomic store under write lock.
 	// The file remains pending until the assigned nodes report successful local
 	// persistence via Heartbeat.new_chunks.
-	controller.mu.Lock()
-	_, exists := controller.files[msg.Filename]
-	_, pendingExists := controller.pendingFiles[msg.Filename]
-	if !exists && !pendingExists {
-		controller.pendingFiles[msg.Filename] = &FileMetadata{
-			Filename:   msg.Filename,
-			FileSize:   msg.FileSize,
-			ChunkSize:  msg.ChunkSize,
-			ChunkCount: msg.ChunkCount,
-			Chunks:     chunkMetas,
-		}
-		controller.pendingStores[msg.Filename] = pendingStores
+	controller.pendingFiles[msg.Filename] = &FileMetadata{
+		Filename:   msg.Filename,
+		FileSize:   msg.FileSize,
+		ChunkSize:  msg.ChunkSize,
+		ChunkCount: msg.ChunkCount,
+		Chunks:     chunkMetas,
 	}
-	controller.mu.Unlock()
-
-	if exists || pendingExists {
-		resp := &messages.Wrapper{
-			Msg: &messages.Wrapper_StoreResponse{
-				StoreResponse: &messages.StoreResponse{
-					Ok:    false,
-					Error: fmt.Sprintf("file %s already exists", msg.Filename),
-				},
-			},
-		}
-		if err := handler.Send(resp); err != nil {
-			log.Printf("[Controller] Failed to send error StoreResponse: %v", err)
-		}
-		return
-	}
+	controller.pendingStores[msg.Filename] = pendingStores
 
 	// Send success response
 	resp := &messages.Wrapper{
@@ -1505,6 +1514,41 @@ func (c *Controller) selectNodes(count int, requiredBytes uint64) ([]*NodeInfo, 
 	// the next eligible node in the stable ordering.
 	c.nextPlacementIndex = (start + 1) % len(eligible)
 	return selected, nil
+}
+
+func (c *Controller) selectNodesForStoreLocked(count int, requiredBytes uint64, available map[uint32]uint64, placementCursor int) ([]*NodeInfo, int, error) {
+	eligible := make([]*NodeInfo, 0, len(c.nodes))
+	for _, n := range c.nodes {
+		if available[n.NodeId] >= requiredBytes {
+			eligible = append(eligible, n)
+		}
+	}
+	if len(eligible) < count {
+		return nil, placementCursor, fmt.Errorf("not enough eligible nodes: need %d, have %d", count, len(eligible))
+	}
+
+	for i := 0; i < len(eligible)-1; i++ {
+		for j := i + 1; j < len(eligible); j++ {
+			if eligible[j].NodeId < eligible[i].NodeId {
+				eligible[i], eligible[j] = eligible[j], eligible[i]
+			}
+		}
+	}
+
+	start := 0
+	if len(eligible) > 0 {
+		start = placementCursor % len(eligible)
+	}
+
+	selected := make([]*NodeInfo, 0, count)
+	for i := 0; i < count; i++ {
+		idx := (start + i) % len(eligible)
+		node := eligible[idx]
+		selected = append(selected, node)
+		available[node.NodeId] -= requiredBytes
+	}
+
+	return selected, (start + 1) % len(eligible), nil
 }
 
 // chunkSizeForIndex returns the exact number of bytes that chunk i will carry.
