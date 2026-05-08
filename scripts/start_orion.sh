@@ -27,6 +27,28 @@ echo $! > "$PID_DIR/controller.pid"
 
 sleep 1
 
+CONTROLLER_PID=$(cat "$PID_DIR/controller.pid")
+if ! kill -0 "$CONTROLLER_PID" 2>/dev/null; then
+    echo "[start_orion.sh] Controller process exited early; see $LOG_DIR/controller.log" >&2
+    exit 1
+fi
+
+controller_bound=0
+for _ in 1 2 3 4 5; do
+    if lsof -Pan -p "$CONTROLLER_PID" -iTCP:"$CONTROLLER_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+        controller_bound=1
+        break
+    fi
+    sleep 1
+done
+
+if [ "$controller_bound" -ne 1 ]; then
+    echo "[start_orion.sh] Controller failed to bind port $CONTROLLER_PORT; see $LOG_DIR/controller.log" >&2
+    kill "$CONTROLLER_PID" 2>/dev/null || true
+    rm -f "$PID_DIR/controller.pid"
+    exit 1
+fi
+
 for i in $(seq 0 $((NODE_COUNT - 1))); do
     NODE_HOST=$(jq -r ".storage.nodes[$i].host" "$CONFIG")
     NODE_PORT=$(jq -r ".storage.nodes[$i].port" "$CONFIG")

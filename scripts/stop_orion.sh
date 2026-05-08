@@ -10,15 +10,31 @@ NODE_COUNT=$(jq '.storage.nodes | length' "$CONFIG")
 # -----------------------------------------------
 # 1. Stop Controller (local)
 # -----------------------------------------------
+controller_stopped=0
+
 if [ -f "$PID_DIR/controller.pid" ]; then
     PID=$(cat "$PID_DIR/controller.pid")
     if kill -0 "$PID" 2>/dev/null; then
         kill "$PID"
         echo "[stop_orion.sh] Controller stopped (PID $PID)"
+        controller_stopped=1
     else
         echo "[stop_orion.sh] Controller already stopped"
     fi
     rm "$PID_DIR/controller.pid"
+fi
+
+for PID in $(lsof -tiTCP:10000 -sTCP:LISTEN 2>/dev/null || true); do
+    COMM=$(ps -p "$PID" -o comm= 2>/dev/null | tr -d '[:space:]')
+    if [ "$COMM" = "controller" ]; then
+        kill "$PID"
+        echo "[stop_orion.sh] Stopped leftover controller listener on port 10000 (PID $PID)"
+        controller_stopped=1
+    fi
+done
+
+if [ "$controller_stopped" -eq 0 ]; then
+    echo "[stop_orion.sh] No controller process found on port 10000"
 fi
 
 # -----------------------------------------------
