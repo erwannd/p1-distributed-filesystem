@@ -117,7 +117,7 @@ message InputSplit {
     string filename = 2;
     uint64 start_offset = 3;
     uint64 end_offset_exclusive = 4;
-    uint64 start_line_number = 5;      // zero-based; 0 for binary splits
+    uint64 start_line_number = 5;      // zero-based within the split; 0 for binary splits
     repeated NodeInfo preferred_nodes = 6;
 }
 

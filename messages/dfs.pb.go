@@ -920,7 +920,7 @@ type InputSplit struct {
 	Filename           string                 `protobuf:"bytes,2,opt,name=filename,proto3" json:"filename,omitempty"`
 	StartOffset        uint64                 `protobuf:"varint,3,opt,name=start_offset,json=startOffset,proto3" json:"start_offset,omitempty"`
 	EndOffsetExclusive uint64                 `protobuf:"varint,4,opt,name=end_offset_exclusive,json=endOffsetExclusive,proto3" json:"end_offset_exclusive,omitempty"`
-	StartLineNumber    uint64                 `protobuf:"varint,5,opt,name=start_line_number,json=startLineNumber,proto3" json:"start_line_number,omitempty"` // zero-based; 0 for binary splits
+	StartLineNumber    uint64                 `protobuf:"varint,5,opt,name=start_line_number,json=startLineNumber,proto3" json:"start_line_number,omitempty"` // zero-based within the split; 0 for binary splits
 	PreferredNodes     []*NodeInfo            `protobuf:"bytes,6,rep,name=preferred_nodes,json=preferredNodes,proto3" json:"preferred_nodes,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache

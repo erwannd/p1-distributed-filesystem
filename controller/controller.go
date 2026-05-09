@@ -1232,10 +1232,10 @@ func buildBinaryChunkSplits(snapshot *filePlanningSnapshot) []*messages.InputSpl
 	return splits
 }
 
-// buildTextLineSplits computes exact line-aware logical splits on demand. The
-// controller keeps storage chunking unchanged and uses verified range reads to
-// scan the file sequentially, so start_line_number values stay exact without a
-// persistent secondary index.
+// buildTextLineSplits computes newline-aligned logical splits on demand. The
+// controller keeps storage chunking unchanged and only scans near split
+// boundaries to avoid breaking records; start_line_number is reset per split so
+// submit-time planning does not need to scan the full file.
 func (c *Controller) buildTextLineSplits(snapshot *filePlanningSnapshot, desiredSplitSize uint64) ([]*messages.InputSplit, error) {
 	if desiredSplitSize == 0 {
 		return nil, fmt.Errorf("desired split size must be greater than zero")
@@ -1246,7 +1246,6 @@ func (c *Controller) buildTextLineSplits(snapshot *filePlanningSnapshot, desired
 
 	splits := make([]*messages.InputSplit, 0)
 	startOffset := uint64(0)
-	startLineNumber := uint64(0)
 	splitIndex := uint32(0)
 
 	for startOffset < snapshot.FileSize {
@@ -1260,22 +1259,16 @@ func (c *Controller) buildTextLineSplits(snapshot *filePlanningSnapshot, desired
 			}
 		}
 
-		splitBytes, err := c.readFileRange(snapshot, startOffset, endOffset-startOffset)
-		if err != nil {
-			return nil, err
-		}
-
 		preferredNodes := cloneMessageNodes(snapshot.chunkNodesForOffset(startOffset))
 		splits = append(splits, &messages.InputSplit{
 			SplitIndex:         splitIndex,
 			Filename:           snapshot.Filename,
 			StartOffset:        startOffset,
 			EndOffsetExclusive: endOffset,
-			StartLineNumber:    startLineNumber,
+			StartLineNumber:    0,
 			PreferredNodes:     preferredNodes,
 		})
 
-		startLineNumber += uint64(bytes.Count(splitBytes, []byte{'\n'}))
 		startOffset = endOffset
 		splitIndex++
 	}
